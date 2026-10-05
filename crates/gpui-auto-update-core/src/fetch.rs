@@ -221,6 +221,26 @@ impl HttpClient {
     }
 }
 
+/// Classifies an I/O error returned while reading a [`Download`] opened with
+/// a `limit`-byte bound.
+pub(crate) fn read_error(error: std::io::Error, limit: u64) -> FetchError {
+    if error.kind() == std::io::ErrorKind::TimedOut {
+        return FetchError::Timeout;
+    }
+    // ureq reports body failures (timeouts, the size limit) as its own error
+    // wrapped in an `io::Error`.
+    if error
+        .get_ref()
+        .is_some_and(|inner| inner.is::<ureq::Error>())
+    {
+        if let Some(Ok(inner)) = error.into_inner().map(|e| e.downcast::<ureq::Error>()) {
+            return map_error(*inner, limit);
+        }
+        return FetchError::Transport("unreadable response body".to_owned());
+    }
+    FetchError::Transport(error.to_string())
+}
+
 fn map_error(error: ureq::Error, limit: u64) -> FetchError {
     match error {
         ureq::Error::Timeout(_) => FetchError::Timeout,

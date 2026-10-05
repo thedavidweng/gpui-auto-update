@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and Ed25519 keys and signatures), fail-closed feed validation, bounded HTTP
   fetching with checked redirects, and order-independent release selection.
   See `docs/feed-format.md`.
+- Core: automatic-update preference persisted atomically to a JSON file on
+  Windows and Linux (corrupt files fall back to defaults), and a configurable
+  automatic-check policy: a launch check that respects a minimum interval,
+  optional periodic checks, discovery when automatic checks are enabled, and
+  backend-owned preferences for Sparkle.
+- Core: verified artifact download and staging (`download` module): streamed
+  download with byte progress, declared-length and size-limit enforcement,
+  Ed25519 verification before the file gets its final name, and fresh private
+  staging directories whose paths never come from the feed. `FeedCheckSource`
+  connects the native feed checker to the update coordinator.
 - CLI: `gpui-auto-update keys` generates, imports, inspects, and checks
   Sparkle-compatible Ed25519 signing keys (32-byte seed and legacy 96-byte
   formats), integrates with Sparkle's Keychain workflow on macOS, accepts

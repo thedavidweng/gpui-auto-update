@@ -2307,6 +2307,9 @@ dependencies = [
  "roxmltree 0.21.1",
  "rustls",
  "semver",
+ "serde",
+ "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tiny_http",
  "tracing",
@@ -2319,6 +2322,7 @@ name = "gpui-auto-update-linux"
 version = "0.0.0"
 dependencies = [
  "gpui-auto-update-core",
+ "tempfile",
 ]
 
 [[package]]
