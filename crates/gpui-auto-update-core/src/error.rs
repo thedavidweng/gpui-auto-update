@@ -63,6 +63,8 @@ pub enum ErrorKind {
     HealthConfirmation,
     /// Rolling back to the previous version failed.
     Rollback,
+    /// The automatic-update preference could not be read or saved.
+    Preferences,
     /// An unexpected internal failure, such as a check source that panicked.
     Internal,
 }
@@ -97,6 +99,7 @@ impl ErrorKind {
             Self::Relaunch => "The application could not be restarted after the update.",
             Self::HealthConfirmation => "The updated application did not start correctly.",
             Self::Rollback => "The previous version could not be restored.",
+            Self::Preferences => "The update settings could not be read or saved.",
             Self::Internal => "An unexpected error occurred while updating.",
         }
     }
