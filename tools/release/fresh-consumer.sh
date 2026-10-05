@@ -20,14 +20,17 @@ fi
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$root"
 
+# The Windows jq build emits CRLF line endings.
+jqr() { jq -r "$@" | tr -d '\r'; }
+
 metadata="$(cargo metadata --format-version 1 --no-deps --locked)"
-target_dir="$(jq -r '.target_directory' <<<"$metadata")"
+target_dir="$(jqr '.target_directory' <<<"$metadata")"
 # On Windows, GNU tar reads `D:\...` as a remote host; use the POSIX form.
 if command -v cygpath >/dev/null; then
   target_dir="$(cygpath -u "$target_dir")"
 fi
 # `publish = false` shows up as an empty registry list; `null` means crates.io.
-published="$(jq -r '.packages[] | select(.publish != []) | "\(.name) \(.version)"' <<<"$metadata")"
+published="$(jqr '.packages[] | select(.publish != []) | "\(.name) \(.version)"' <<<"$metadata")"
 if [[ -z "$published" ]]; then
   echo "no publishable packages found" >&2
   exit 1
@@ -67,7 +70,7 @@ while read -r name version; do
   fi
 done <<<"$published"
 
-gpui_req="$(jq -r '[.packages[] | .dependencies[] | select(.name == "gpui") | .req] | first' <<<"$metadata")"
+gpui_req="$(jqr '[.packages[] | .dependencies[] | select(.name == "gpui") | .req] | first' <<<"$metadata")"
 
 cat >"$work/consumer/Cargo.toml" <<EOF
 [package]
