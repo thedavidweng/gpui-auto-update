@@ -34,6 +34,7 @@ pub use state::{
 };
 
 pub mod check;
+pub mod download;
 pub mod feed;
 pub mod fetch;
 pub mod trust;

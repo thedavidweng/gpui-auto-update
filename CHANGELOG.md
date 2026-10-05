@@ -24,3 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatic-check policy: a launch check that respects a minimum interval,
   optional periodic checks, discovery when automatic checks are enabled, and
   backend-owned preferences for Sparkle.
+- Core: verified artifact download and staging (`download` module): streamed
+  download with byte progress, declared-length and size-limit enforcement,
+  Ed25519 verification before the file gets its final name, and fresh private
+  staging directories whose paths never come from the feed. `FeedCheckSource`
+  connects the native feed checker to the update coordinator.
