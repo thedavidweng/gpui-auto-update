@@ -24,3 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatic-check policy: a launch check that respects a minimum interval,
   optional periodic checks, discovery when automatic checks are enabled, and
   backend-owned preferences for Sparkle.
+- GPUI facade: the `Updater` entity with standard actions (`CheckForUpdates`,
+  `InstallUpdate`, `RestartToUpdate`, `DismissUpdate`), background execution
+  of all checks, preference saves, and backend calls, an `UpdateBackend`
+  install/handoff contract with GPUI restart, helper-owned quit, and
+  backend-owned relaunch, asynchronous prepare-to-install hooks, an install
+  busy guard, a debug-build install guard, deterministic preview states, and
+  per-platform default preference file locations.
