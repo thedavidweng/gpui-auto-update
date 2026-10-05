@@ -2315,8 +2315,14 @@ dependencies = [
 name = "gpui-auto-update-linux"
 version = "0.0.0"
 dependencies = [
+ "base64 0.23.1",
+ "ed25519-dalek",
+ "flate2",
  "gpui-auto-update-core",
+ "tar",
  "tempfile",
+ "thiserror 2.0.21",
+ "tiny_http",
 ]
 
 [[package]]
@@ -5616,6 +5622,16 @@ dependencies = [
  "core-foundation-sys",
  "libc",
  "objc",
+]
+
+[[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
+ "libc",
 ]
 
 [[package]]
