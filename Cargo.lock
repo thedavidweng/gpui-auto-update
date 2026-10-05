@@ -2303,6 +2303,7 @@ dependencies = [
  "semver",
  "thiserror 2.0.21",
  "tiny_http",
+ "tracing",
  "ureq",
  "url",
 ]
@@ -4787,7 +4788,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
