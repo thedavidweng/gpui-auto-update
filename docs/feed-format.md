@@ -7,8 +7,8 @@ and the same Ed25519 key and signature encodings. One key pair can therefore
 sign releases for all three platforms.
 
 The parser and selection rules live in `gpui-auto-update-core`
-(`feed`, `trust`, `fetch`, `check`, and `version` modules). This document is
-the contract they implement.
+(`feed`, `trust`, `fetch`, `check`, `download`, and `version` modules). This
+document is the contract they implement.
 
 ## Example
 
@@ -201,5 +201,6 @@ not the feed. An attacker who can modify the feed (but does not have the
 private key) cannot make the client accept an unsigned or altered artifact.
 However, they can withhold updates, or relabel an older signed artifact with a
 higher version number. Backends must therefore check that the version inside
-a verified artifact matches the selected `sparkle:version` before installing.
+a verified artifact matches the selected `sparkle:version` before installing;
+`download::StagedArtifact::expected_version` provides that version.
 Sparkle-style signed feeds are a candidate future addition.

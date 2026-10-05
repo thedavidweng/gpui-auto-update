@@ -24,6 +24,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatic-check policy: a launch check that respects a minimum interval,
   optional periodic checks, discovery when automatic checks are enabled, and
   backend-owned preferences for Sparkle.
+- Core: verified artifact download and staging (`download` module): streamed
+  download with byte progress, declared-length and size-limit enforcement,
+  Ed25519 verification before the file gets its final name, and fresh private
+  staging directories whose paths never come from the feed. `FeedCheckSource`
+  connects the native feed checker to the update coordinator.
+- `gpui-auto-update sparkle` commands: fetch a checksum-pinned official
+  Sparkle distribution (2.10.0 by default), embed `Sparkle.framework` with its
+  license notice and the XPC services for the declared sandbox mode, sign
+  nested code in order with the hardened runtime (ad-hoc or Developer ID), and
+  validate Info.plist metadata, run paths, sandbox requirements, and
+  signatures.
+- Scheduled workflow that opens an issue when a newer stable Sparkle release
+  is available.
+- CLI: `gpui-auto-update keys` generates, imports, inspects, and checks
+  Sparkle-compatible Ed25519 signing keys (32-byte seed and legacy 96-byte
+  formats), integrates with Sparkle's Keychain workflow on macOS, accepts
+  private keys only through standard input, environment variables, or files,
+  and fails when a key pair does not match. Core marks a published insecure
+  test key that release tooling refuses. See `docs/key-management.md`,
+  which includes the key rotation procedure.
 - GPUI facade: the `Updater` entity with standard actions (`CheckForUpdates`,
   `InstallUpdate`, `RestartToUpdate`, `DismissUpdate`), background execution
   of all checks, preference saves, and backend calls, an `UpdateBackend`

@@ -127,3 +127,19 @@ fn malformed_signatures_are_rejected() {
         );
     }
 }
+
+/// Public key of `INSECURE_TEST_KEY_SEED`, derived independently with
+/// `openssl pkey -pubout`.
+const INSECURE_TEST_PUB: &str = "X4kvjOoTZUsPKjjF0W/qzutLOb3d9LPmYZ4szZGg8wI=";
+
+#[test]
+fn insecure_test_key_is_recognizable_from_its_public_key() {
+    let key = TrustedKey::from_base64(INSECURE_TEST_PUB).unwrap();
+    assert!(key.is_insecure_test_key());
+    assert_eq!(TrustedKey::insecure_test_key(), key);
+    assert!(
+        !TrustedKey::from_base64(SPARKLE_PUB)
+            .unwrap()
+            .is_insecure_test_key()
+    );
+}
