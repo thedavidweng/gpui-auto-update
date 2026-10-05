@@ -43,6 +43,12 @@ allow = [
 ]
 confidence-threshold = 0.9
 
+exceptions = [
+    # Mozilla's CA certificate data, bundled by rustls for the CLI's
+    # Sparkle download. CDLA-Permissive-2.0 is a permissive data license.
+    { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },
+]
+
 [licenses.private]
 ignore = true
 
