@@ -37,3 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   signatures.
 - Scheduled workflow that opens an issue when a newer stable Sparkle release
   is available.
+- CLI: `gpui-auto-update keys` generates, imports, inspects, and checks
+  Sparkle-compatible Ed25519 signing keys (32-byte seed and legacy 96-byte
+  formats), integrates with Sparkle's Keychain workflow on macOS, accepts
+  private keys only through standard input, environment variables, or files,
+  and fails when a key pair does not match. Core marks a published insecure
+  test key that release tooling refuses. See `docs/key-management.md`,
+  which includes the key rotation procedure.

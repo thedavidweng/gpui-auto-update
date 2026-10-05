@@ -2388,6 +2388,8 @@ dependencies = [
  "anyhow",
  "base64 0.23.1",
  "clap",
+ "ed25519-dalek",
+ "getrandom 0.4.3",
  "gpui-auto-update-core",
  "liblzma",
  "roxmltree 0.21.1",
@@ -2398,6 +2400,7 @@ dependencies = [
  "tempfile",
  "tiny_http",
  "url",
+ "zeroize",
 ]
 
 [[package]]

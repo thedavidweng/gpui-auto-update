@@ -24,6 +24,8 @@ gpui-auto-update-core.workspace = true
 anyhow = "1.0.104"
 base64 = "0.23.1"
 clap = { version = "4.6.7", features = ["derive", "env"] }
+ed25519-dalek = { version = "3.0.0", features = ["hazmat"] }
+getrandom = "0.4.3"
 liblzma = { version = "0.4.8", default-features = false, features = ["static"] }
 roxmltree = "0.21.1"
 serde = { version = "1.0.229", features = ["derive"] }
@@ -32,6 +34,7 @@ sha2 = "0.11.0"
 tar = { version = "0.4.46", default-features = false }
 tempfile = "3.27.0"
 url = "2.5.8"
+zeroize = "1.8.2"
 
 [dev-dependencies]
 sha2 = "0.11.0"
