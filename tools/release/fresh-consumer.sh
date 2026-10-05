@@ -22,6 +22,10 @@ cd "$root"
 
 metadata="$(cargo metadata --format-version 1 --no-deps --locked)"
 target_dir="$(jq -r '.target_directory' <<<"$metadata")"
+# On Windows, GNU tar reads `D:\...` as a remote host; use the POSIX form.
+if command -v cygpath >/dev/null; then
+  target_dir="$(cygpath -u "$target_dir")"
+fi
 # `publish = false` shows up as an empty registry list; `null` means crates.io.
 published="$(jq -r '.packages[] | select(.publish != []) | "\(.name) \(.version)"' <<<"$metadata")"
 if [[ -z "$published" ]]; then
