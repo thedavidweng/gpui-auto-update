@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime};
 use gpui::{App, BackgroundExecutor, Entity, Subscription, TestAppContext};
 use gpui_auto_update::core::{
     AvailableUpdate, Capability, CheckOutcome, CheckPolicy, CheckRequest, CheckSource, Clock,
-    DownloadProgress, ErrorKind, MemoryPreferenceStore, UpdateError, UpdateState,
+    DownloadProgress, ErrorKind, MemoryPreferenceStore, UpdateError, UpdateEvent, UpdateState,
 };
 use gpui_auto_update::{
     BuildProfile, Handoff, ProgressSink, UpdateBackend, Updater, UpdaterConfig, UpdaterEvent,
@@ -118,7 +118,15 @@ struct BackendState {
     stage_result: Result<(), UpdateError>,
     handoff: Result<Handoff, UpdateError>,
     channel: Option<String>,
+    reporting: Reporting,
     calls: Vec<(BackendCall, bool)>,
+}
+
+#[derive(Clone, Copy)]
+enum Reporting {
+    Sink,
+    Coordinator,
+    Silent,
 }
 
 impl FakeBackend {
@@ -130,6 +138,7 @@ impl FakeBackend {
                 stage_result: Ok(()),
                 handoff: Ok(Handoff::Restart { restart_path: None }),
                 channel: None,
+                reporting: Reporting::Sink,
                 calls: Vec::new(),
             })),
             executor: cx.executor(),
@@ -154,6 +163,19 @@ impl FakeBackend {
 
     pub fn with_handoff(self, handoff: Result<Handoff, UpdateError>) -> Self {
         self.inner.lock().unwrap().handoff = handoff;
+        self
+    }
+
+    /// Reports by applying events to the coordinator directly, as the
+    /// core's `ArtifactDownloader::download_and_stage` does.
+    pub fn reporting_through_coordinator(self) -> Self {
+        self.inner.lock().unwrap().reporting = Reporting::Coordinator;
+        self
+    }
+
+    /// Reports no progress at all.
+    pub fn silent(self) -> Self {
+        self.inner.lock().unwrap().reporting = Reporting::Silent;
         self
     }
 
@@ -202,10 +224,24 @@ impl UpdateBackend for FakeBackend {
     }
 
     fn stage(&self, update: &AvailableUpdate, progress: &ProgressSink) -> Result<(), UpdateError> {
-        let (steps, result) = {
+        let (steps, result, reporting) = {
             let inner = self.record(BackendCall::Stage(update.version.clone()));
-            (inner.progress.clone(), inner.stage_result.clone())
+            (
+                inner.progress.clone(),
+                inner.stage_result.clone(),
+                inner.reporting,
+            )
         };
+        match reporting {
+            Reporting::Sink => {}
+            Reporting::Silent => return result,
+            Reporting::Coordinator => {
+                let coordinator = progress.coordinator();
+                coordinator.apply(UpdateEvent::DownloadStarted { total: Some(10) })?;
+                coordinator.apply(UpdateEvent::Staged)?;
+                return result;
+            }
+        }
         let total = steps.first().and_then(|step| step.total);
         progress.download_started(total);
         for step in steps {

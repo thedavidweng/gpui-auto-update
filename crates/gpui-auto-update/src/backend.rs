@@ -29,10 +29,12 @@ pub trait UpdateBackend: Send + Sync + 'static {
     /// Downloads, verifies, and stages `update` so it can be installed
     /// without further network access.
     ///
-    /// When this is called the state is already
-    /// [`UpdateState::Downloading`] with an unknown total; report finer
-    /// progress through `progress`. Returning `Ok` moves the state to
-    /// [`UpdateState::Staged`]; returning an error moves it to
+    /// When this is called the state is [`UpdateState::Available`]. Report
+    /// progress through `progress`, either with its methods or by handing
+    /// [`ProgressSink::coordinator`] to code that drives the coordinator
+    /// itself, such as the core's `ArtifactDownloader::download_and_stage`.
+    /// Returning `Ok` moves the state to [`UpdateState::Staged`] unless the
+    /// backend already did; returning an error moves it to
     /// [`UpdateState::Failed`].
     fn stage(&self, update: &AvailableUpdate, progress: &ProgressSink) -> Result<(), UpdateError>;
 
@@ -154,6 +156,12 @@ impl ProgressSink {
     /// A sink that applies reports to `coordinator`.
     pub fn new(coordinator: UpdateCoordinator) -> Self {
         Self { coordinator }
+    }
+
+    /// The coordinator that reports go to, for code that applies
+    /// [`UpdateEvent`]s itself.
+    pub fn coordinator(&self) -> &UpdateCoordinator {
+        &self.coordinator
     }
 
     /// The artifact download started; `total` is its size when known.

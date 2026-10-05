@@ -612,15 +612,13 @@ impl Updater {
         update: AvailableUpdate,
         cx: &mut Context<Self>,
     ) -> Result<(), UpdateError> {
-        self.coordinator
-            .apply(UpdateEvent::DownloadStarted { total: None })?;
         let coordinator = self.coordinator.clone();
         let backend = self.backend.clone();
         let tx = self.tx.clone();
         self.operation = Some(cx.background_spawn(async move {
             let sink = ProgressSink::new(coordinator.clone());
             let result = match guarded(|| backend.stage(&update, &sink)) {
-                Ok(()) => coordinator.apply(UpdateEvent::Staged).map(|()| None),
+                Ok(()) => finish_staging(&coordinator).map(|()| None),
                 Err(error) => {
                     let _ = coordinator.apply(UpdateEvent::Failed(error.clone()));
                     Err(error)
@@ -760,6 +758,19 @@ fn install(
             let _ = coordinator.apply(UpdateEvent::Failed(error.clone()));
             Err(error)
         }
+    }
+}
+
+/// Moves to [`UpdateState::Staged`] after a successful stage, whether the
+/// backend reported every step, only some, or none.
+fn finish_staging(coordinator: &UpdateCoordinator) -> Result<(), UpdateError> {
+    match coordinator.state() {
+        UpdateState::Staged(_) => Ok(()),
+        UpdateState::Available(_) => {
+            coordinator.apply(UpdateEvent::DownloadStarted { total: None })?;
+            coordinator.apply(UpdateEvent::Staged)
+        }
+        _ => coordinator.apply(UpdateEvent::Staged),
     }
 }
 

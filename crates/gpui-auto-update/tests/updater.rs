@@ -233,7 +233,6 @@ fn install_stages_with_progress_then_saves_and_restarts(cx: &mut TestAppContext)
     assert_eq!(
         recorder.states(),
         vec![
-            downloading(0, None),
             downloading(0, Some(100)),
             downloading(50, Some(100)),
             downloading(100, Some(100)),
@@ -279,7 +278,7 @@ fn install_stages_with_progress_then_saves_and_restarts(cx: &mut TestAppContext)
     );
     assert!(!backend.ran_on_main_thread());
     assert_eq!(
-        recorder.states()[6..],
+        recorder.states()[5..],
         [
             UpdateState::Installing(u2.clone()),
             UpdateState::Relaunching(u2.clone())
@@ -526,4 +525,46 @@ fn dropped_updater_never_ends_the_app(cx: &mut TestAppContext) {
             .contains(&BackendCall::Install("2.0.0".into())),
         "install waits for the save hooks, which are cancelled with the updater"
     );
+}
+
+#[gpui::test]
+fn backends_may_drive_the_coordinator_directly(cx: &mut TestAppContext) {
+    let backend = FakeBackend::new(cx).reporting_through_coordinator();
+    let (updater, _source) = available_updater(cx, &backend, |c| c);
+    let recorder = Recorder::new(&updater, cx);
+
+    updater.update(cx, |u, cx| u.request_install(cx)).unwrap();
+    cx.run_until_parked();
+
+    let u2 = update("2.0.0");
+    assert_eq!(
+        recorder.states(),
+        vec![
+            UpdateState::Downloading {
+                update: u2.clone(),
+                progress: DownloadProgress {
+                    downloaded: 0,
+                    total: Some(10)
+                },
+            },
+            UpdateState::Staged(u2),
+        ]
+    );
+    assert!(
+        !recorder
+            .events()
+            .iter()
+            .any(|e| matches!(e, UpdaterEvent::Failed(_)))
+    );
+}
+
+#[gpui::test]
+fn backends_that_report_nothing_still_stage(cx: &mut TestAppContext) {
+    let backend = FakeBackend::new(cx).silent();
+    let (updater, _source) = available_updater(cx, &backend, |c| c);
+
+    updater.update(cx, |u, cx| u.request_install(cx)).unwrap();
+    cx.run_until_parked();
+
+    assert_eq!(state(&updater, cx), UpdateState::Staged(update("2.0.0")));
 }
