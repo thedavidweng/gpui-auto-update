@@ -32,3 +32,9 @@ pub use state::{
     AvailableUpdate, Channel, DownloadProgress, ReleaseNotes, ReleaseNotesFormat, UpdateEvent,
     UpdateState,
 };
+
+pub mod check;
+pub mod feed;
+pub mod fetch;
+pub mod trust;
+pub mod version;
