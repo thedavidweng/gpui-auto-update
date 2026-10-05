@@ -80,6 +80,10 @@ _To be completed._
 | --- | --- | --- | --- |
 | unreleased | 0.2.2 (official crate) | 1.85+ | latest stable |
 
+Known issue: on Linux, gpui 0.2.2 does not build with `libc` 0.2.190 or newer
+(its `xattr` 0.2 dependency uses a removed constant). Pin it in your
+application with `cargo update -p libc --precise 0.2.189`.
+
 ## Troubleshooting
 
 _To be completed._
