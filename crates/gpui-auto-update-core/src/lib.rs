@@ -16,12 +16,18 @@ mod capability;
 mod check_source;
 mod coordinator;
 mod error;
+mod policy;
+mod preferences;
 mod state;
 
 pub use capability::Capability;
 pub use check_source::{CheckKind, CheckOutcome, CheckRequest, CheckSource};
 pub use coordinator::{Subscription, UpdateCoordinator};
 pub use error::{ErrorKind, UpdateError};
+pub use policy::{AutomaticChecks, CheckPolicy, Clock, SystemClock};
+pub use preferences::{
+    FilePreferenceStore, MemoryPreferenceStore, PreferenceOwner, PreferenceStore, UpdatePreferences,
+};
 pub use state::{
     AvailableUpdate, Channel, DownloadProgress, ReleaseNotes, ReleaseNotesFormat, UpdateEvent,
     UpdateState,

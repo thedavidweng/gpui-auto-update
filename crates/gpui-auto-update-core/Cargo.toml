@@ -14,6 +14,9 @@ keywords = ["auto-update", "updater", "ed25519", "sparkle", "desktop"]
 categories = ["os", "gui"]
 
 [dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json.workspace = true
+tempfile = "3.27.0"
 tracing = "0.1.44"
 
 [lints]

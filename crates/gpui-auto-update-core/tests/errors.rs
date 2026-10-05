@@ -60,6 +60,7 @@ fn every_error_class_has_a_distinct_generic_message() {
         ErrorKind::Relaunch,
         ErrorKind::HealthConfirmation,
         ErrorKind::Rollback,
+        ErrorKind::Preferences,
         ErrorKind::Internal,
     ];
     let mut messages: Vec<&str> = kinds.iter().map(|kind| kind.default_message()).collect();
