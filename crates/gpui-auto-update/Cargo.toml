@@ -1,0 +1,32 @@
+[package]
+name = "gpui-auto-update"
+description = "Production-grade automatic updates for GPUI apps — Sparkle on macOS, signed native updates on Windows and Linux."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+documentation = "https://docs.rs/gpui-auto-update"
+readme = "README.md"
+keywords = ["gpui", "auto-update", "updater", "sparkle", "desktop"]
+categories = ["gui", "os"]
+
+[dependencies]
+gpui.workspace = true
+gpui-auto-update-core.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+gpui-auto-update-macos.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+gpui-auto-update-windows.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gpui-auto-update-linux.workspace = true
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true
