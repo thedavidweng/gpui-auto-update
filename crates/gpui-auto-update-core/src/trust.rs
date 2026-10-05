@@ -17,9 +17,17 @@ use std::io::Read;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as B64;
-use ed25519_dalek::{Signature, VerifyingKey};
+use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
 
 const READ_CHUNK: usize = 64 * 1024;
+
+/// Seed of the project's insecure test key pair.
+///
+/// The seed is published here on purpose: anyone can sign with this key, so
+/// it is only for local development and tests. Because its public key is
+/// recognizable ([`TrustedKey::is_insecure_test_key`]), release tooling can
+/// refuse to treat it as a production trust key.
+pub const INSECURE_TEST_KEY_SEED: [u8; 32] = *b"gpui-auto-update-INSECURE-test!!";
 
 /// The public key an application trusts to sign its updates.
 #[derive(Clone, PartialEq, Eq)]
@@ -106,6 +114,17 @@ impl TrustedKey {
         B64.encode(self.0.to_bytes())
     }
 
+    /// The public half of the insecure test key ([`INSECURE_TEST_KEY_SEED`]).
+    pub fn insecure_test_key() -> Self {
+        Self(SigningKey::from_bytes(&INSECURE_TEST_KEY_SEED).verifying_key())
+    }
+
+    /// Whether this is the public half of the insecure test key, which must
+    /// never be trusted by a production release.
+    pub fn is_insecure_test_key(&self) -> bool {
+        *self == Self::insecure_test_key()
+    }
+
     /// Verifies that `artifact` is exactly `expected_len` bytes and that
     /// `signature` is a valid signature of those bytes by this key.
     ///
@@ -171,7 +190,12 @@ impl EdSignature {
             .as_slice()
             .try_into()
             .map_err(|_| SignatureError::Length(raw.len()))?;
-        Ok(Self(Signature::from_bytes(&bytes)))
+        Ok(Self::from_bytes(&bytes))
+    }
+
+    /// Wraps a raw 64-byte signature.
+    pub fn from_bytes(bytes: &[u8; 64]) -> Self {
+        Self(Signature::from_bytes(bytes))
     }
 
     /// The signature in `sparkle:edSignature` form.

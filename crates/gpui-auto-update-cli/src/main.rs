@@ -9,6 +9,8 @@
 
 use std::process::ExitCode;
 
+mod keys;
+
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
@@ -16,6 +18,7 @@ fn main() -> ExitCode {
             println!("gpui-auto-update {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
+        Some("keys") => keys::run(args),
         Some("--help" | "-h") | None => {
             println!("{USAGE}");
             ExitCode::SUCCESS
@@ -30,6 +33,8 @@ fn main() -> ExitCode {
 const USAGE: &str = "\
 Release and integration tooling for gpui-auto-update.
 
-Usage: gpui-auto-update [--help | --version]
+Usage: gpui-auto-update <command> [options]
+       gpui-auto-update [--help | --version]
 
-No subcommands are available yet.";
+Commands:
+  keys    Manage Sparkle-compatible Ed25519 signing keys";
