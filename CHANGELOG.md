@@ -15,3 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cargo-deny checks.
 - Dual MIT OR Apache-2.0 licensing, contribution guide, security policy, code
   of conduct, and issue and pull request templates.
+- Core: signed native feed for Windows and Linux (Sparkle-compatible fields
+  and Ed25519 keys and signatures), fail-closed feed validation, bounded HTTP
+  fetching with checked redirects, and order-independent release selection.
+  See `docs/feed-format.md`.

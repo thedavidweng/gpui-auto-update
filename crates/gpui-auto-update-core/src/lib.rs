@@ -14,3 +14,9 @@
 //! crate in the workspace layout described in ADR 0001.
 
 #![forbid(unsafe_code)]
+
+pub mod check;
+pub mod feed;
+pub mod fetch;
+pub mod trust;
+pub mod version;
