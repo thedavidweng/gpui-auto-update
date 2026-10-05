@@ -1,0 +1,54 @@
+name: Platform compatibility
+description: The updater fails or misbehaves on a specific OS version, architecture, desktop environment, or GPUI/Sparkle version.
+labels: [needs-triage]
+body:
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [macOS, Windows, Linux]
+    validations:
+      required: true
+  - type: dropdown
+    id: arch
+    attributes:
+      label: Architecture
+      options: [x86_64, aarch64 / ARM64, Universal (macOS)]
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS version and environment
+      description: For example "Windows 11 24H2", "Ubuntu 24.04, GNOME, Wayland", or "macOS 15.4".
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: gpui-auto-update, gpui, and Sparkle versions
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation type
+      options:
+        - macOS app bundle (Sparkle)
+        - Windows per-user installer
+        - Windows portable
+        - Linux managed user-local install
+        - Installed by a package manager (Homebrew, winget, distro package, Flatpak, ...)
+        - Other
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed and expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Remove private keys, tokens, and personal paths.
+      render: text

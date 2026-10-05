@@ -1,0 +1,20 @@
+[package]
+name = "gpui-auto-update-linux"
+description = "Linux backend for gpui-auto-update: verified managed-install staging, swap, and rollback."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+documentation = "https://docs.rs/gpui-auto-update-linux"
+readme = "README.md"
+keywords = ["auto-update", "updater", "linux", "rollback", "desktop"]
+categories = ["os::linux-apis", "gui"]
+
+[dependencies]
+gpui-auto-update-core.workspace = true
+
+[lints]
+workspace = true

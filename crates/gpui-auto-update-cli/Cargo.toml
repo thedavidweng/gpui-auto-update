@@ -1,0 +1,26 @@
+[package]
+name = "gpui-auto-update-cli"
+description = "Release and integration tooling for gpui-auto-update: keys, feeds, verification, and doctor checks."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+documentation = "https://docs.rs/gpui-auto-update-cli"
+readme = "README.md"
+keywords = ["auto-update", "sparkle", "appcast", "release", "ed25519"]
+categories = ["command-line-utilities", "development-tools::build-utils"]
+
+[[bin]]
+name = "gpui-auto-update"
+path = "src/main.rs"
+# Shares the `gpui_auto_update` crate name with the facade library.
+doc = false
+
+[dependencies]
+gpui-auto-update-core.workspace = true
+
+[lints]
+workspace = true
