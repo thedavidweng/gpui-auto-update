@@ -31,7 +31,10 @@ fn unknown_arguments_fail_with_usage_on_stderr() {
     let out = cli(&["frobnicate"]);
     assert_eq!(out.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("unrecognized argument `frobnicate`"));
+    assert!(
+        stderr.contains("unrecognized subcommand 'frobnicate'"),
+        "{stderr}"
+    );
     assert!(stderr.contains("Usage: gpui-auto-update"));
     assert!(out.stdout.is_empty());
 }
