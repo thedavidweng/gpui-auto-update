@@ -2221,6 +2221,7 @@ name = "gpui-auto-update-linux"
 version = "0.0.0"
 dependencies = [
  "gpui-auto-update-core",
+ "tempfile",
 ]
 
 [[package]]

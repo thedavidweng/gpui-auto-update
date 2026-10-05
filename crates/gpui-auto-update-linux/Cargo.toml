@@ -16,5 +16,8 @@ categories = ["os::linux-apis", "gui"]
 [dependencies]
 gpui-auto-update-core.workspace = true
 
+[dev-dependencies]
+tempfile = "3.27.0"
+
 [lints]
 workspace = true
