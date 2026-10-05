@@ -9,7 +9,9 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use clap::Args;
+use gpui_auto_update_core::fetch::{FetchError, FetchPolicy, HttpClient};
 use sha2::Digest as _;
+use url::Url;
 
 use super::bundle;
 use super::pins::Pins;
@@ -166,60 +168,36 @@ fn read_limited(path: &Path, max: u64) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-/// Scheme and host of an absolute URL, without a URL-parsing dependency.
-pub(super) fn scheme_and_host(url: &str) -> Option<(&str, &str)> {
-    let (scheme, rest) = url.split_once("://")?;
-    let authority = rest.split(['/', '?', '#']).next()?;
-    let host_port = authority.rsplit('@').next()?;
-    let host = if let Some(bracketed) = host_port.strip_prefix('[') {
-        bracketed.split(']').next()?
-    } else {
-        host_port.split(':').next()?
-    };
-    (!host.is_empty()).then_some((scheme, host))
-}
-
 fn download(url: &str, max: u64) -> Result<Vec<u8>> {
-    let (scheme, host) = scheme_and_host(url).with_context(|| format!("invalid URL {url}"))?;
-    let https = match scheme {
-        "https" => true,
-        "http" if matches!(host, "127.0.0.1" | "localhost" | "::1") => false,
-        _ => bail!("refusing to download {url}: Sparkle archives must be fetched over https"),
+    let parsed = Url::parse(url).with_context(|| format!("invalid URL {url}"))?;
+    let loopback = match parsed.host() {
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        Some(url::Host::Domain(d)) => d == "localhost",
+        None => false,
     };
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .timeout_connect(Some(Duration::from_secs(30)))
-        .timeout_global(Some(Duration::from_secs(600)))
-        // GitHub release assets redirect to a CDN; https_only keeps every hop
-        // on TLS and the checksum pins the content regardless of the host.
-        .max_redirects(if https { 5 } else { 0 })
-        .https_only(https)
-        .http_status_as_error(false)
-        .user_agent(concat!("gpui-auto-update-cli/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .into();
-    eprintln!("downloading {url}");
-    let mut response = agent
-        .get(url)
-        .call()
-        .with_context(|| format!("cannot download {url}"))?;
-    let status = response.status().as_u16();
-    if status != 200 {
-        bail!("downloading {url} failed with HTTP status {status}");
+    match parsed.scheme() {
+        "https" => {}
+        "http" if loopback => {}
+        _ => bail!("refusing to download {url}: Sparkle archives must be fetched over https"),
     }
-    let too_large = || anyhow::anyhow!("{url} is larger than the expected {max} bytes");
-    // ureq rejects a body whose length reaches the limit, so allow one extra
-    // byte and enforce the exact bound below.
-    let bytes = response
-        .body_mut()
-        .with_config()
-        .limit(max + 1)
-        .read_to_vec()
-        .map_err(|e| match e {
-            ureq::Error::BodyExceedsLimit(_) => too_large(),
-            e => anyhow::Error::new(e).context(format!("cannot download {url}")),
-        })?;
+    let client = HttpClient::new(FetchPolicy {
+        timeout: Duration::from_secs(600),
+        // Only loopback test servers may use http; https never downgrades.
+        allow_insecure_http: loopback,
+        ..FetchPolicy::default()
+    });
+    eprintln!("downloading {url}");
+    // The body limit rejects a body whose length reaches it, so allow one
+    // extra byte and enforce the exact bound below.
+    let bytes = client.get_bytes(&parsed, max + 1).map_err(|e| match e {
+        FetchError::TooLarge { .. } => {
+            anyhow::anyhow!("{url} is larger than the expected {max} bytes")
+        }
+        e => anyhow::Error::new(e).context(format!("cannot download {url}")),
+    })?;
     if bytes.len() as u64 > max {
-        return Err(too_large());
+        bail!("{url} is larger than the expected {max} bytes");
     }
     Ok(bytes)
 }
@@ -333,24 +311,6 @@ fn check_layout(root: &Path, expected_version: Option<&str>) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn hosts_are_extracted_from_urls() {
-        assert_eq!(
-            scheme_and_host("https://github.com/a/b"),
-            Some(("https", "github.com"))
-        );
-        assert_eq!(
-            scheme_and_host("http://127.0.0.1:8080/x"),
-            Some(("http", "127.0.0.1"))
-        );
-        assert_eq!(scheme_and_host("http://[::1]:80/x"), Some(("http", "::1")));
-        assert_eq!(
-            scheme_and_host("http://localhost@evil.example/x"),
-            Some(("http", "evil.example"))
-        );
-        assert_eq!(scheme_and_host("not a url"), None);
-    }
 
     #[test]
     fn symlinks_are_checked_relative_to_their_directory() {

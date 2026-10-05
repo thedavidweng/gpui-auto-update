@@ -13,7 +13,6 @@ use clap::Args;
 
 use super::SandboxMode;
 use super::bundle;
-use super::fetch::scheme_and_host;
 use super::macho;
 use super::pins::Pins;
 
@@ -293,12 +292,13 @@ fn check_info(
         }
     }
     if let Some(feed) = feed {
-        match scheme_and_host(&feed) {
-            Some(("https", _)) => {}
-            _ => report.error(
+        let https =
+            url::Url::parse(&feed).is_ok_and(|u| u.scheme() == "https" && u.host().is_some());
+        if !https {
+            report.error(
                 AREA,
                 format!("SUFeedURL must be an absolute https URL (got {feed:?})"),
-            ),
+            );
         }
     }
     if let Some(key) = key {
