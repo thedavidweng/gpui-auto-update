@@ -2301,6 +2301,7 @@ dependencies = [
  "roxmltree 0.21.1",
  "rustls",
  "semver",
+ "tempfile",
  "thiserror 2.0.21",
  "tiny_http",
  "tracing",
