@@ -7,29 +7,61 @@
 
 #![forbid(unsafe_code)]
 
+mod keys;
+mod sparkle;
+
 use std::process::ExitCode;
 
+use clap::{CommandFactory, Parser, Subcommand};
+
+/// Release and integration tooling for gpui-auto-update.
+#[derive(Debug, Parser)]
+#[command(name = "gpui-auto-update", version, about)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Manage Sparkle-compatible Ed25519 signing keys.
+    Keys(KeysArgs),
+    /// Acquire, embed, sign, and validate the Sparkle framework (macOS).
+    Sparkle(sparkle::SparkleArgs),
+}
+
+/// Arguments after `keys`, handed unparsed to the keys parser.
+///
+/// Clap's error messages quote offending arguments, which could echo a
+/// private key mistakenly passed on the command line. The keys parser
+/// rejects such arguments without repeating them, so clap must not see them.
+#[derive(Debug, clap::Args)]
+#[command(disable_help_flag = true)]
+struct KeysArgs {
+    #[arg(
+        trailing_var_arg = true,
+        allow_hyphen_values = true,
+        num_args = 0..,
+        hide = true
+    )]
+    args: Vec<String>,
+}
+
 fn main() -> ExitCode {
-    let mut args = std::env::args().skip(1);
-    match args.next().as_deref() {
-        Some("--version" | "-V") => {
-            println!("gpui-auto-update {}", env!("CARGO_PKG_VERSION"));
-            ExitCode::SUCCESS
+    let cli = Cli::parse();
+    let result = match cli.command {
+        None => {
+            println!("{}", Cli::command().render_help());
+            return ExitCode::SUCCESS;
         }
-        Some("--help" | "-h") | None => {
-            println!("{USAGE}");
-            ExitCode::SUCCESS
-        }
-        Some(other) => {
-            eprintln!("error: unrecognized argument `{other}`\n\n{USAGE}");
-            ExitCode::from(2)
+        Some(Command::Keys(args)) => return keys::run(args.args.into_iter()),
+        Some(Command::Sparkle(args)) => sparkle::run(args),
+    };
+    match result {
+        Ok(code) => code,
+        Err(err) => {
+            eprintln!("error: {err:#}");
+            ExitCode::FAILURE
         }
     }
 }
-
-const USAGE: &str = "\
-Release and integration tooling for gpui-auto-update.
-
-Usage: gpui-auto-update [--help | --version]
-
-No subcommands are available yet.";
