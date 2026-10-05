@@ -257,7 +257,7 @@ pub fn detect(inputs: &DetectionInputs) -> Detection {
 /// Architectures with Linux release feeds.
 const SUPPORTED_ARCHES: &[&str] = &["x86_64", "aarch64"];
 
-fn is_valid_app_name(name: &str) -> bool {
+pub(crate) fn is_valid_app_name(name: &str) -> bool {
     (1..=64).contains(&name.len())
         && !name.starts_with(['.', '-'])
         && name
@@ -342,13 +342,13 @@ fn parent_is_writable(prefix: &Path) -> bool {
     false
 }
 
-enum MarkerRead {
+pub(crate) enum MarkerRead {
     Missing,
     Invalid,
     Contents(Vec<u8>),
 }
 
-fn read_marker(path: &Path) -> MarkerRead {
+pub(crate) fn read_marker(path: &Path) -> MarkerRead {
     use std::io::Read as _;
 
     let link_meta = match fs::symlink_metadata(path) {

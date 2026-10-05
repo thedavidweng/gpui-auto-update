@@ -2426,8 +2426,14 @@ dependencies = [
 name = "gpui-auto-update-linux"
 version = "0.0.0"
 dependencies = [
+ "base64 0.23.1",
+ "ed25519-dalek",
+ "flate2",
  "gpui-auto-update-core",
+ "tar",
  "tempfile",
+ "thiserror 2.0.21",
+ "tiny_http",
 ]
 
 [[package]]
