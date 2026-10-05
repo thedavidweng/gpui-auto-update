@@ -35,6 +35,10 @@
 //! [`StagedRelease`] is returned. The archive contract is documented in the
 //! same document.
 
+// The crate docs describe the Unix-only API; on other targets those items do
+// not exist, and docs.rs documents this crate for Linux.
+#![cfg_attr(not(unix), allow(rustdoc::broken_intra_doc_links))]
+
 #[cfg(target_os = "linux")]
 mod current;
 #[cfg(unix)]
