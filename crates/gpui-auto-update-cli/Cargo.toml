@@ -21,6 +21,24 @@ doc = false
 
 [dependencies]
 gpui-auto-update-core.workspace = true
+anyhow = "1.0.104"
+base64 = "0.23.1"
+clap = { version = "4.6.7", features = ["derive", "env"] }
+liblzma = { version = "0.4.8", default-features = false, features = ["static"] }
+roxmltree = "0.21.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json.workspace = true
+sha2 = "0.11.0"
+tar = { version = "0.4.46", default-features = false }
+tempfile = "3.27.0"
+url = "2.5.8"
+
+[dev-dependencies]
+sha2 = "0.11.0"
+liblzma = { version = "0.4.8", default-features = false, features = ["static"] }
+tar = { version = "0.4.46", default-features = false }
+tempfile = "3.27.0"
+tiny_http = "0.12.0"
 
 [lints]
 workspace = true

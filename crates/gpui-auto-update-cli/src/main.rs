@@ -7,29 +7,40 @@
 
 #![forbid(unsafe_code)]
 
+mod sparkle;
+
 use std::process::ExitCode;
 
+use clap::{CommandFactory, Parser, Subcommand};
+
+/// Release and integration tooling for gpui-auto-update.
+#[derive(Debug, Parser)]
+#[command(name = "gpui-auto-update", version, about)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Acquire, embed, sign, and validate the Sparkle framework (macOS).
+    Sparkle(sparkle::SparkleArgs),
+}
+
 fn main() -> ExitCode {
-    let mut args = std::env::args().skip(1);
-    match args.next().as_deref() {
-        Some("--version" | "-V") => {
-            println!("gpui-auto-update {}", env!("CARGO_PKG_VERSION"));
-            ExitCode::SUCCESS
+    let cli = Cli::parse();
+    let result = match cli.command {
+        None => {
+            println!("{}", Cli::command().render_help());
+            return ExitCode::SUCCESS;
         }
-        Some("--help" | "-h") | None => {
-            println!("{USAGE}");
-            ExitCode::SUCCESS
-        }
-        Some(other) => {
-            eprintln!("error: unrecognized argument `{other}`\n\n{USAGE}");
-            ExitCode::from(2)
+        Some(Command::Sparkle(args)) => sparkle::run(args),
+    };
+    match result {
+        Ok(code) => code,
+        Err(err) => {
+            eprintln!("error: {err:#}");
+            ExitCode::FAILURE
         }
     }
 }
-
-const USAGE: &str = "\
-Release and integration tooling for gpui-auto-update.
-
-Usage: gpui-auto-update [--help | --version]
-
-No subcommands are available yet.";
