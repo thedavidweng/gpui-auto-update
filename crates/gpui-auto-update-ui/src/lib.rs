@@ -5,7 +5,11 @@
 //! feedback) inherit the host application's theme and depend only on GPUI,
 //! not on a third-party design system. Applications can replace them
 //! entirely by rendering their own UI from the facade's observable state.
-//!
-//! The controls are not yet implemented.
 
 #![forbid(unsafe_code)]
+
+mod controls;
+mod summary;
+
+pub use controls::{ControlTheme, UpdateControls, UpdateIndicator, set_theme};
+pub use summary::{Tone, UpdateAction, UpdateProgress, UpdateSummary};
