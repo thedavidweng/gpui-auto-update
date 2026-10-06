@@ -2445,6 +2445,7 @@ version = "0.0.0"
 dependencies = [
  "dispatch2",
  "gpui-auto-update-core",
+ "objc2",
  "objc2-app-kit",
  "objc2-foundation",
  "sparkle-updater",
