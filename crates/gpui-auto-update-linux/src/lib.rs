@@ -48,6 +48,10 @@
 //! [`LinuxUpdater`] combines staging and the handoff for one managed
 //! install. The protocol is recorded in `docs/adr/0002-linux-update-helper.md`.
 
+// The crate docs describe the Unix-only API; on other targets those items do
+// not exist, and docs.rs documents this crate for Linux.
+#![cfg_attr(not(unix), allow(rustdoc::broken_intra_doc_links))]
+
 #[cfg(target_os = "linux")]
 mod current;
 #[cfg(unix)]

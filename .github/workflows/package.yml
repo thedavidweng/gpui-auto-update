@@ -1,0 +1,51 @@
+name: Package
+
+# Builds the packaged `.crate` files from a new project outside the workspace,
+# as a crates.io user would. Release publishing reuses this workflow as a gate.
+
+on:
+  push:
+    # `main` is covered by release-plz.yml, which calls this workflow.
+    branches: ["spec-*", "ticket/**"]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # In a `workflow_call`, `github.workflow` is the caller's name, so release
+  # gating runs never share a group with (or get cancelled by) direct runs.
+  group: package-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.workflow == 'Package' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  fresh-consumer:
+    name: fresh consumer (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install GPUI system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libx11-xcb-dev libxcb1-dev libvulkan-dev libfontconfig1-dev libfreetype-dev
+      - name: Ensure Metal toolchain (macOS)
+        if: runner.os == 'macOS'
+        run: xcrun metal --version || xcodebuild -downloadComponent MetalToolchain
+      - uses: Swatinem/rust-cache@v2
+      - name: Package crates and build them as a fresh consumer
+        shell: bash
+        run: tools/release/fresh-consumer.sh

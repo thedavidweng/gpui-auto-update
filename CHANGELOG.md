@@ -63,3 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   surfaced through `Updater::previous_update_failure` and
   `UpdaterEvent::PreviousUpdateFailed`, and `UpdaterConfig::native_feed`,
   which selects the Linux backend by default on Linux.
+- Release automation with release-plz, gated on a fresh-consumer build of the
+  packaged crates on macOS, Windows, and Linux. Published crates include the
+  license texts and document platform backends on their own targets on
+  docs.rs.

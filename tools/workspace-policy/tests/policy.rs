@@ -176,6 +176,33 @@ fn non_library_workspace_members_are_not_published() {
 }
 
 #[test]
+fn published_packages_contain_license_texts_identical_to_the_root() {
+    let root = workspace_root();
+    let packages = workspace_packages();
+    for name in PUBLISHED {
+        let mut cmd = cargo();
+        cmd.args(["package", "--list", "--allow-dirty", "-p", name]);
+        let listed = run(cmd);
+        let crate_dir = PathBuf::from(package(&packages, name)["manifest_path"].as_str().unwrap())
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        for file in ["LICENSE-MIT", "LICENSE-APACHE"] {
+            assert!(
+                listed.lines().any(|l| l == file),
+                "{name}: packaged crate does not contain {file}"
+            );
+            let copy = std::fs::read(crate_dir.join(file)).unwrap();
+            let original = std::fs::read(root.join(file)).unwrap();
+            assert!(
+                copy == original,
+                "{name}: {file} differs from the workspace root copy"
+            );
+        }
+    }
+}
+
+#[test]
 fn repository_ships_dual_license_texts() {
     let root = workspace_root();
     for file in ["LICENSE-MIT", "LICENSE-APACHE"] {

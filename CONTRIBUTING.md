@@ -62,6 +62,33 @@ type-checked for other platforms with
 `cargo check --target x86_64-pc-windows-msvc` or
 `--target x86_64-unknown-linux-gnu`.
 
+## Releasing
+
+Releases are automated with [release-plz](https://release-plz.dev/), configured
+in [release-plz.toml](release-plz.toml):
+
+1. Every push to `main` opens or updates a release pull request that bumps the
+   versions of all published crates together and updates the changelogs from
+   [Conventional Commits](https://www.conventionalcommits.org/) messages.
+2. Review and merge that pull request. Release-plz then publishes the crates
+   to crates.io, tags them, and creates the GitHub release.
+
+Publishing waits for the `Package` workflow, which runs
+`tools/release/fresh-consumer.sh` on macOS, Windows, and Linux. The script
+packages every published crate with `cargo package`, then builds and documents
+the packaged sources (with warnings denied) from a new project outside the
+workspace, as a crates.io user would. Run it locally before changing crate
+manifests or packaging rules:
+
+```sh
+tools/release/fresh-consumer.sh            # full `cargo package` verification
+tools/release/fresh-consumer.sh --no-verify  # faster; still builds the consumer
+```
+
+Each published crate ships copies of `LICENSE-MIT` and `LICENSE-APACHE`. If
+you change the root license files, update the copies too; the
+`workspace-policy` tests fail if they differ.
+
 ## Engineering rules
 
 - **No GPL code.** Waku and Zed are studied only for observable behavior and
