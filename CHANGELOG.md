@@ -58,3 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-place replacement, an `InstallerStrategy` extension point for MSI and
   other installers, structured errors when an installer cannot start, and
   `UpdaterConfig::windows` in the facade. See `docs/windows-installers.md`.
+- Release automation with release-plz, gated on a fresh-consumer build of the
+  packaged crates on macOS, Windows, and Linux. Published crates include the
+  license texts and document platform backends on their own targets on
+  docs.rs.

@@ -435,10 +435,10 @@ fn unverified_bytes_have_no_final_name_and_are_not_executable() {
                 let [dir] = entries(&root).try_into().unwrap();
                 let dir = root.join(dir);
                 for name in entries(&dir) {
-                    let path = dir.join(&name);
                     #[cfg(unix)]
                     {
                         use std::os::unix::fs::PermissionsExt;
+                        let path = dir.join(&name);
                         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
                         assert_eq!(mode & 0o177, 0, "{name}: {mode:o}");
                         let dir_mode = std::fs::metadata(&dir).unwrap().permissions().mode();
