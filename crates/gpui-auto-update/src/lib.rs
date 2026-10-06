@@ -38,6 +38,14 @@
 //! - [`PreviewState`] provides deterministic, clearly marked states for
 //!   building update UI without a real update.
 //!
+//! # Platform backends
+//!
+//! On Windows, `UpdaterConfig::windows` builds the default configuration
+//! from a `gpui_auto_update::windows::WindowsUpdateConfig`: the declared
+//! architecture's signed feed is the check source, and the Windows backend
+//! stages verified installers or portable executables and hands off to them
+//! (see `docs/windows-installers.md` in the repository).
+//!
 //! # Debug builds
 //!
 //! Debug builds check for updates but never install them unless
@@ -51,10 +59,16 @@
 mod backend;
 mod config;
 mod paths;
+#[cfg(windows)]
+mod platform_windows;
 mod preview;
 mod updater;
 
 pub use gpui_auto_update_core as core;
+/// The Windows backend; [`UpdaterConfig::windows`] builds the default
+/// Windows configuration from its [`WindowsUpdateConfig`](windows::WindowsUpdateConfig).
+#[cfg(windows)]
+pub use gpui_auto_update_windows as windows;
 
 pub use backend::{Handoff, ProgressSink, UnsupportedBackend, UpdateBackend};
 pub use config::{BuildProfile, UpdaterConfig};

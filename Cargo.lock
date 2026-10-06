@@ -2465,7 +2465,14 @@ dependencies = [
 name = "gpui-auto-update-windows"
 version = "0.0.0"
 dependencies = [
+ "base64 0.23.1",
+ "ed25519-dalek",
  "gpui-auto-update-core",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tiny_http",
+ "tracing",
+ "url",
 ]
 
 [[package]]
