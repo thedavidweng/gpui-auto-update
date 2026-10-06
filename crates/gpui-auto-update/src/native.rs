@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use gpui_auto_update_core::check::{FeedCheckSource, UpdateChecker};
 use gpui_auto_update_core::download::ArtifactDownloader;
-use gpui_auto_update_core::feed::{Arch, Os, UpdateTarget};
+use gpui_auto_update_core::feed::{Arch, Channel, Os, UpdateTarget};
 use gpui_auto_update_core::fetch::{FetchPolicy, HttpClient};
 use gpui_auto_update_core::trust::TrustedKey;
 use gpui_auto_update_core::version::ReleaseVersion;
@@ -23,6 +23,7 @@ pub struct NativeFeed {
     current_version: ReleaseVersion,
     executable_name: Option<String>,
     fetch_policy: FetchPolicy,
+    channel: Option<Channel>,
 }
 
 impl NativeFeed {
@@ -46,6 +47,7 @@ impl NativeFeed {
             current_version,
             executable_name: None,
             fetch_policy: FetchPolicy::default(),
+            channel: None,
         })
     }
 
@@ -54,6 +56,15 @@ impl NativeFeed {
     /// name.
     pub fn with_executable_name(mut self, name: impl Into<String>) -> Self {
         self.executable_name = Some(name.into());
+        self
+    }
+
+    /// Starts on `channel`: checks also select releases whose
+    /// `sparkle:channel` is `channel`, besides those on the default channel.
+    /// [`Updater::set_channel`](crate::Updater::set_channel) changes it at
+    /// runtime; neither is persisted, so set it on every launch.
+    pub fn with_channel(mut self, channel: Channel) -> Self {
+        self.channel = Some(channel);
         self
     }
 
@@ -83,8 +94,11 @@ impl UpdaterConfig {
             return Self::new(app_id, NoUpdates).with_capability(Capability::Unsupported);
         };
         let client = HttpClient::new(feed.fetch_policy);
-        let checker =
-            UpdateChecker::new(feed.feed_url, UpdateTarget::new(os, arch), client.clone());
+        let mut target = UpdateTarget::new(os, arch);
+        if let Some(channel) = feed.channel {
+            target = target.with_channel(channel);
+        }
+        let checker = UpdateChecker::new(feed.feed_url, target, client.clone());
         let source = Arc::new(FeedCheckSource::new(checker, feed.current_version));
         let downloader = ArtifactDownloader::new(client, feed.public_key);
         let backend = default_backend(source.clone(), downloader, feed.executable_name);

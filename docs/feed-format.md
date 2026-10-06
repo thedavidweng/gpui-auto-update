@@ -159,6 +159,25 @@ Given the running version, OS, architecture, opted-in channels, and
 SemVer precedence ignores build metadata and orders pre-releases before their
 release (`2.0.0-beta.1` < `2.0.0`).
 
+### Choosing a channel
+
+Applications query the channel with `Updater::channel` and change it with
+`Updater::set_channel` on every platform. `None` means the default channel
+only, and `Some(beta)` means the default channel plus `beta`, so a beta user
+still receives a stable release that is newer than every beta. The next check
+uses the new channel.
+
+| Platform | Where the channel lives |
+| --- | --- |
+| macOS | Sparkle's allowed channels (`allowedChannelsForUpdater:`) |
+| Windows | The backend's feed check (`WindowsUpdateConfig::with_channel` sets the initial channel) |
+| Linux | The native feed check (`NativeFeed::with_channel` sets the initial channel) |
+
+No platform persists the choice: Sparkle does not store allowed channels, and
+the Windows and Linux backends follow the same rule. Set the channel again on
+every launch, for example from the application's own settings. A name that is
+not a valid `sparkle:channel` name is rejected with a configuration error.
+
 ## Versions and file system paths
 
 Only `sparkle:version` may ever name a file or directory, and only after it

@@ -70,11 +70,19 @@ impl UpdateChecker {
     /// Fetches and evaluates the feed for an installation at `current`.
     /// Blocks the calling thread.
     pub fn check(&self, current: &ReleaseVersion) -> Result<Selection, CheckError> {
+        self.check_for(&self.target, current)
+    }
+
+    fn check_for(
+        &self,
+        target: &UpdateTarget,
+        current: &ReleaseVersion,
+    ) -> Result<Selection, CheckError> {
         let bytes = self
             .client
             .get_bytes(&self.feed_url, self.limits.max_feed_bytes)?;
         let feed = Feed::parse(&bytes, &self.limits)?;
-        Ok(feed.select(&self.target, current)?)
+        Ok(feed.select(target, current)?)
     }
 }
 
@@ -145,21 +153,64 @@ impl From<&SelectedUpdate> for AvailableUpdate {
 /// [`ArtifactDownloader`](crate::download::ArtifactDownloader). Share it
 /// with the coordinator through an [`Arc`](std::sync::Arc) to read
 /// [`Self::selected`] later.
+///
+/// Checks select releases on the default channel and on the channels the
+/// checker's [`UpdateTarget`] opted into, which [`Self::set_channel`] can
+/// change at any time; the next check uses the new channel.
 #[derive(Debug)]
 pub struct FeedCheckSource {
     checker: UpdateChecker,
     current: ReleaseVersion,
+    channels: Mutex<Vec<FeedChannel>>,
     selected: Mutex<Option<SelectedUpdate>>,
 }
 
 impl FeedCheckSource {
     /// A source that checks with `checker` for an installation at `current`.
     pub fn new(checker: UpdateChecker, current: ReleaseVersion) -> Self {
+        let channels = checker.target().channels.clone();
         Self {
             checker,
             current,
+            channels: Mutex::new(channels),
             selected: Mutex::new(None),
         }
+    }
+
+    /// The channel checks select from in addition to the default channel;
+    /// `None` is the default channel only. When the [`UpdateTarget`] opted
+    /// into several channels, this is the first of them.
+    pub fn channel(&self) -> Option<Channel> {
+        self.lock_channels().first().map(Channel::from)
+    }
+
+    /// Lets the next checks select releases on `channel` in addition to the
+    /// default channel, or only on the default channel for `None`. This
+    /// replaces every channel opted into before.
+    ///
+    /// Fails with [`ErrorKind::Configuration`], changing nothing, when the
+    /// name is not a valid `sparkle:channel` name.
+    pub fn set_channel(&self, channel: Option<Channel>) -> Result<(), UpdateError> {
+        let channels = match channel {
+            None => Vec::new(),
+            Some(channel) => {
+                let valid = FeedChannel::new(channel.as_str()).ok_or_else(|| {
+                    UpdateError::new(ErrorKind::Configuration)
+                        .with_message("This update channel name is not valid.")
+                        .with_diagnostic(format!(
+                            "invalid channel name {:?}: use 1 to 64 ASCII letters, digits, '.', '_', or '-', not starting with '.'",
+                            channel.as_str()
+                        ))
+                })?;
+                vec![valid]
+            }
+        };
+        *self.lock_channels() = channels;
+        Ok(())
+    }
+
+    fn lock_channels(&self) -> MutexGuard<'_, Vec<FeedChannel>> {
+        self.channels.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// The release found by the last successful check, or `None` if that
@@ -176,7 +227,9 @@ impl FeedCheckSource {
 
 impl CheckSource for FeedCheckSource {
     fn check(&self, _request: &CheckRequest) -> Result<CheckOutcome, UpdateError> {
-        match self.checker.check(&self.current)? {
+        let mut target = self.checker.target().clone();
+        target.channels = self.lock_channels().clone();
+        match self.checker.check_for(&target, &self.current)? {
             Selection::UpToDate => {
                 *self.lock() = None;
                 Ok(CheckOutcome::UpToDate)

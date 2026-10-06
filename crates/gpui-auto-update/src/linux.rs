@@ -10,7 +10,7 @@ use std::sync::{Arc, OnceLock};
 
 use gpui_auto_update_core::check::FeedCheckSource;
 use gpui_auto_update_core::download::ArtifactDownloader;
-use gpui_auto_update_core::{AvailableUpdate, Capability, UpdateError};
+use gpui_auto_update_core::{AvailableUpdate, Capability, Channel, UpdateError};
 use gpui_auto_update_linux::{Detection, HelperCommand, LinuxUpdater};
 
 use crate::backend::{Handoff, ProgressSink, UpdateBackend};
@@ -144,6 +144,16 @@ impl UpdateBackend for LinuxBackend {
     fn confirm_startup(&self) -> Result<(), UpdateError> {
         self.updater().confirm_startup().map(drop)
     }
+
+    fn channel(&self) -> Option<Channel> {
+        self.source.channel()
+    }
+
+    /// Selects the channel of the shared feed source. The choice is not
+    /// persisted; set it again on every launch, as on macOS.
+    fn set_channel(&self, channel: Option<Channel>) -> Result<(), UpdateError> {
+        self.source.set_channel(channel)
+    }
 }
 
 #[cfg(test)]
@@ -217,6 +227,36 @@ mod tests {
             error.kind(),
             gpui_auto_update_core::ErrorKind::UnsupportedInstallation
         );
+    }
+
+    #[test]
+    fn the_channel_selects_which_feed_entries_checks_consider() {
+        let backend = backend(Arc::default());
+        assert_eq!(backend.channel(), None);
+
+        backend
+            .set_channel(Some(gpui_auto_update_core::Channel::new("beta")))
+            .unwrap();
+        assert_eq!(
+            backend.channel(),
+            Some(gpui_auto_update_core::Channel::new("beta"))
+        );
+        assert_eq!(
+            backend.source.channel(),
+            Some(gpui_auto_update_core::Channel::new("beta")),
+            "checks run through the shared feed source"
+        );
+
+        let error = backend
+            .set_channel(Some(gpui_auto_update_core::Channel::new("../beta")))
+            .unwrap_err();
+        assert_eq!(
+            error.kind(),
+            gpui_auto_update_core::ErrorKind::Configuration
+        );
+
+        backend.set_channel(None).unwrap();
+        assert_eq!(backend.channel(), None);
     }
 
     struct NoSource;
