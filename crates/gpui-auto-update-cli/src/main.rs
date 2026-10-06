@@ -10,6 +10,7 @@
 mod feed;
 mod keys;
 mod sparkle;
+mod verify;
 
 use std::process::ExitCode;
 
@@ -31,6 +32,8 @@ enum Command {
     Sparkle(sparkle::SparkleArgs),
     /// Generate signed native feeds and Sparkle appcasts.
     Feed(FeedArgs),
+    /// Audit a published feed and its artifacts without installing.
+    Verify(verify::VerifyArgs),
 }
 
 /// Arguments after `keys`, handed unparsed to the keys parser.
@@ -74,6 +77,7 @@ fn main() -> ExitCode {
         Some(Command::Keys(args)) => return keys::run(args.args.into_iter()),
         Some(Command::Feed(args)) => return feed::run(args.args.into_iter()),
         Some(Command::Sparkle(args)) => sparkle::run(args),
+        Some(Command::Verify(args)) => verify::run(args),
     };
     match result {
         Ok(code) => code,
