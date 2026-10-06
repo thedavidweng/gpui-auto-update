@@ -50,8 +50,11 @@ fn preferences_path(
 ) -> Result<PathBuf, UpdateError> {
     validate_app_id(app_id)?;
     let absolute = |name: &str| {
-        var(name).map(PathBuf::from).filter(|path| {
-            path.is_absolute() || matches!(os, Os::Windows) && is_windows_absolute(path)
+        // Absoluteness is judged by the rules of `os`, not of the host, so
+        // every platform's layout can be tested on any host.
+        var(name).map(PathBuf::from).filter(|path| match os {
+            Os::Windows => path.is_absolute() || is_windows_absolute(path),
+            Os::Mac | Os::Unix => path.to_string_lossy().starts_with('/'),
         })
     };
     let base = match os {
