@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+mod feed;
 mod keys;
 mod sparkle;
 
@@ -28,6 +29,8 @@ enum Command {
     Keys(KeysArgs),
     /// Acquire, embed, sign, and validate the Sparkle framework (macOS).
     Sparkle(sparkle::SparkleArgs),
+    /// Generate signed native feeds and Sparkle appcasts.
+    Feed(FeedArgs),
 }
 
 /// Arguments after `keys`, handed unparsed to the keys parser.
@@ -47,6 +50,20 @@ struct KeysArgs {
     args: Vec<String>,
 }
 
+/// Arguments after `feed`, handed unparsed to the feed parser for the same
+/// reason as [`KeysArgs`].
+#[derive(Debug, clap::Args)]
+#[command(disable_help_flag = true)]
+struct FeedArgs {
+    #[arg(
+        trailing_var_arg = true,
+        allow_hyphen_values = true,
+        num_args = 0..,
+        hide = true
+    )]
+    args: Vec<String>,
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
@@ -55,6 +72,7 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         Some(Command::Keys(args)) => return keys::run(args.args.into_iter()),
+        Some(Command::Feed(args)) => return feed::run(args.args.into_iter()),
         Some(Command::Sparkle(args)) => sparkle::run(args),
     };
     match result {

@@ -9,9 +9,10 @@ use std::process::ExitCode;
 
 use gpui_auto_update_core::trust::TrustedKey;
 
-use keychain::Keychain;
+pub use keychain::Keychain;
 pub use private_key::PrivateKey;
-use secret_io::{KeySource, write_new_key_file};
+pub use secret_io::KeySource;
+use secret_io::write_new_key_file;
 
 pub const USAGE: &str = "\
 Manage Sparkle-compatible Ed25519 update signing keys.
@@ -202,7 +203,9 @@ impl Options {
     }
 }
 
-fn is_secret_flag(flag: &str) -> bool {
+/// Whether `flag` looks like an attempt to pass a private key as an
+/// argument (`--private-key`, `--key-file=...`, and similar).
+pub fn is_secret_flag(flag: &str) -> bool {
     let name = flag.split('=').next().unwrap_or(flag);
     matches!(
         name,

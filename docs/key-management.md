@@ -201,6 +201,9 @@ never offered a release they cannot verify, however many versions they skip.
    gpui-auto-update keys check --public-key "$OLD_PUBLIC_KEY" --key-env SPARKLE_PRIVATE_KEY
    ```
 
+   Generate its feed entries with `--bridge-from-public-key "$OLD_PUBLIC_KEY"`
+   and `--public-key "$NEW_PUBLIC_KEY"` (see
+   [feed-generation.md](feed-generation.md#key-rotation-bridge-releases)).
    Publish it in the **old** feeds. From now on the old feeds only ever list
    the bridge release (and older releases); they are frozen.
 4. **Start the new feeds** at the new URLs. List the bridge release there

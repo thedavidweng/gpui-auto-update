@@ -44,3 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and fails when a key pair does not match. Core marks a published insecure
   test key that release tooling refuses. See `docs/key-management.md`,
   which includes the key rotation procedure.
+- CLI: `gpui-auto-update feed native` signs Windows and Linux artifacts into
+  one native feed per OS and architecture, with immutable versioned https
+  artifact URLs and validation by the updater's own parser; `feed sparkle`
+  runs Sparkle's `generate_appcast` (including deltas) from a pinned
+  distribution. Both refuse unsigned entries and keys that do not match the
+  app's public key, and support explicit key-rotation bridge releases. See
+  `docs/feed-generation.md`.
