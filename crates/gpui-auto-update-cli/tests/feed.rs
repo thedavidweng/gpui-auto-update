@@ -70,7 +70,10 @@ impl<'a> Run<'a> {
         let mut child = cmd.spawn().expect("failed to run gpui-auto-update");
         let mut stdin = child.stdin.take().unwrap();
         if let Some(input) = self.stdin {
-            stdin.write_all(input.as_bytes()).unwrap();
+            // The CLI may reject its arguments and exit before reading the key.
+            if let Err(err) = stdin.write_all(input.as_bytes()) {
+                assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe, "{err}");
+            }
         }
         drop(stdin);
         child.wait_with_output().unwrap()
