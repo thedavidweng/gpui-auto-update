@@ -10,7 +10,7 @@
 //! | `started <version>` | The updater of this build is ready |
 //! | `update-available <version>` | A check offered this version; it is being installed |
 //! | `up-to-date` | The check found nothing newer |
-//! | `error <kind>: <message>` | A check or another operation failed |
+//! | `error <kind>: <message> [(<diagnostic>)]` | A check or another operation failed |
 //! | `handoff` | The app is ending so the update can be finished |
 //!
 //! The app keeps running after `up-to-date` or `error`; the test ends it.
@@ -102,7 +102,11 @@ fn install(updater: &Entity<Updater>, report: &Path, cx: &mut App) {
 }
 
 fn describe(error: &UpdateError) -> String {
-    format!("error {:?}: {}", error.kind(), error.message())
+    let mut line = format!("error {:?}: {}", error.kind(), error.message());
+    if let Some(diagnostic) = error.diagnostic() {
+        line.push_str(&format!(" ({diagnostic})"));
+    }
+    line
 }
 
 fn append(report: &Path, line: &str) {
@@ -227,9 +231,9 @@ mod tests {
 
     #[gpui::test]
     fn a_failed_update_is_reported_and_nothing_is_installed(cx: &mut TestAppContext) {
-        let backend = Backend::new(Err(
-            UpdateError::new(ErrorKind::Signature).with_message("The signature is invalid.")
-        ));
+        let backend = Backend::new(Err(UpdateError::new(ErrorKind::Signature)
+            .with_message("The signature is invalid.")
+            .with_diagnostic("signature does not verify")));
         let report = run(cx, Some("1.1.0"), &backend);
         assert_eq!(backend.calls(), ["stage 1.1.0"]);
         assert_eq!(
@@ -237,7 +241,7 @@ mod tests {
             [
                 "started 1.0.0",
                 "update-available 1.1.0",
-                "error Signature: The signature is invalid."
+                "error Signature: The signature is invalid. (signature does not verify)"
             ]
         );
     }

@@ -237,6 +237,7 @@ function Test-InnoSetupFlow {
             (Join-Path $Repo 'apps\reference-app\packaging\windows\reference-app.iss')
         )
         $installers[$version] = Join-Path $root "dist\reference-app-$version-windows-$Arch-setup.exe"
+        (Get-Item $installers[$version]).VersionInfo | Format-List FileVersion, ProductVersion | Out-String | Write-Host
     }
     Publish-Feed $installers[$NewVersion] 'inno-setup' $Site $KeyFile $PublicKey
 
