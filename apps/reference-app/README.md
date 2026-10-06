@@ -28,6 +28,41 @@ cargo build -p gpui-auto-update-reference-app --release
 | `REFERENCE_APP_ALLOW_DEBUG_SELF_UPDATE` | Let a debug build install updates | `false` |
 | `REFERENCE_APP_EXTERNALLY_MANAGED` | Package manager name; marks the install externally managed | none |
 | `REFERENCE_APP_CHECK_INTERVAL_SECS` | Periodic automatic check interval | library default |
+| `REFERENCE_APP_WINDOWS_INSTALL` | Windows update strategy: `inno-setup` or `portable` | none; Windows builds do not update themselves |
+| `REFERENCE_APP_E2E_REPORT` | Absolute path; run unattended and append what happens to it | none |
 
 `reference-app --version` prints the compiled version and exits, so tests can
 tell which build is running.
+
+On Windows the build also embeds a version resource whose `ProductVersion`
+is `REFERENCE_APP_VERSION`, which the Windows backend checks before it
+installs an update.
+
+## Unattended end-to-end runs
+
+A build with `REFERENCE_APP_E2E_REPORT` checks for updates as soon as it
+starts, installs whatever the feed offers without waiting for a click, and
+appends one line per step to the report (`started <version>`,
+`update-available <version>`, `handoff`, `up-to-date`, `error ...`). It keeps
+running afterwards; the test ends it. See `src/unattended.rs`.
+
+### Windows
+
+`tools/e2e/windows/run-e2e.ps1` (PowerShell 7) runs the Windows end-to-end
+flows on a Windows host of the declared architecture:
+
+```powershell
+./tools/e2e/windows/run-e2e.ps1 -Arch x86_64 -Flow inno-setup, portable
+```
+
+- **inno-setup**: builds 1.0.0 and 1.1.0, packages each with
+  [`packaging/windows/reference-app.iss`](packaging/windows/reference-app.iss),
+  installs 1.0.0 per user into a non-default directory, and runs it. The
+  update must run the 1.1.0 installer only after 1.0.0 quit cleanly on its
+  own, replace the files in that same directory, and relaunch 1.1.0.
+- **portable**: runs a 1.0.0 executable that must replace itself with the
+  1.1.0 executable and restart into it.
+
+Each run signs its feed with a disposable key and serves it from loopback.
+The `Windows end-to-end` workflow runs both flows on x86_64 and ARM64
+runners.
