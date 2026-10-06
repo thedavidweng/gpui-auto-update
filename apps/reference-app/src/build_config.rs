@@ -274,16 +274,14 @@ mod tests {
 
     #[test]
     fn end_to_end_builds_run_unattended_and_can_be_broken() {
+        let report = std::env::temp_dir().join("e2e").join("report.log");
         let inputs = BuildInputs {
-            e2e_report: Some("/tmp/e2e/report.log"),
+            e2e_report: report.to_str(),
             e2e_fail_to_start: Some("yes"),
             ..BuildInputs::default()
         };
         let config = BuildConfig::from_inputs(&inputs).unwrap();
-        assert_eq!(
-            config.e2e_report.as_deref(),
-            Some(std::path::Path::new("/tmp/e2e/report.log"))
-        );
+        assert_eq!(config.e2e_report, Some(report.clone()));
         assert!(config.e2e_fail_to_start);
 
         let plain = BuildConfig::from_inputs(&BuildInputs::default()).unwrap();
