@@ -144,13 +144,13 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 ..Default::default()
             },
-            |_, cx| {
+            |window, cx| {
                 cx.new(|cx| {
                     let document = cx.new(|_| Document::new(document_path(&app_id)));
                     Root {
                         title: format!("Reference App {version}"),
                         config_error,
-                        panel: cx.new(|cx| UpdatePanel::new(updater.clone(), version, cx)),
+                        panel: cx.new(|cx| UpdatePanel::new(updater.clone(), version, window, cx)),
                         _document: cx.observe(&document, |_, _, cx| cx.notify()),
                         _save_before_install: document::save_before_install(
                             &updater, &document, cx,

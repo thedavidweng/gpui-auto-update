@@ -37,6 +37,19 @@
 //!   that runs before the updater quits or restarts the application.
 //! - [`PreviewState`] provides deterministic, clearly marked states for
 //!   building update UI without a real update.
+//! - [`UpdaterConfig::native_feed`] configures a signed native feed together
+//!   with the platform's default backend (on Linux, the managed-install
+//!   backend in `linux`).
+//!
+//! # Startup health and the Linux helper
+//!
+//! Applications that install from native feeds must call
+//! [`run_update_helper_if_requested`] first thing in `main`, and
+//! [`Updater::main_window_opened`] once the main window is shown. On Linux
+//! the update helper keeps the previous version until that confirmation
+//! arrives and restores it if the new version exits first; what happened is
+//! reported on the next start through [`Updater::previous_update_failure`]
+//! and [`UpdaterEvent::PreviousUpdateFailed`].
 //!
 //! # Platform backends
 //!
@@ -78,6 +91,9 @@
 
 mod backend;
 mod config;
+#[cfg(any(target_os = "linux", all(test, unix)))]
+pub mod linux;
+mod native;
 mod paths;
 #[cfg(windows)]
 mod platform_windows;
@@ -99,6 +115,7 @@ pub use backend::{
     Handoff, HandoffGate, PostponedHandoff, ProgressSink, UnsupportedBackend, UpdateBackend,
 };
 pub use config::{BuildProfile, UpdaterConfig};
+pub use native::NativeFeed;
 pub use paths::default_preferences_path;
 pub use preview::{PREVIEW_CHANNEL, PREVIEW_VERSION, PreviewState};
 pub use updater::{PrepareError, Updater, UpdaterEvent};
@@ -142,6 +159,25 @@ pub fn init(config: UpdaterConfig, cx: &mut App) -> Entity<Updater> {
 fn global(cx: &App) -> Option<Entity<Updater>> {
     cx.try_global::<GlobalUpdater>()
         .map(|global| global.0.clone())
+}
+
+/// Finishes an update and exits the process if this process was started as
+/// the Linux update helper; otherwise returns immediately.
+///
+/// Call it first thing in `main`, before creating the GPUI application. On
+/// Linux the backend finishes an update by starting the application's own
+/// executable in helper mode after the application quits; this call is
+/// what runs that helper. It does nothing on other platforms and costs only
+/// an argument check.
+///
+/// ```no_run
+/// // First thing in `main`:
+/// gpui_auto_update::run_update_helper_if_requested();
+/// // ...then create the GPUI application as usual.
+/// ```
+pub fn run_update_helper_if_requested() {
+    #[cfg(target_os = "linux")]
+    gpui_auto_update_linux::run_helper_if_requested();
 }
 
 fn register_actions(cx: &mut App) {

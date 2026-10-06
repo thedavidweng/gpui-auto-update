@@ -77,6 +77,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-place replacement, an `InstallerStrategy` extension point for MSI and
   other installers, structured errors when an installer cannot start, and
   `UpdaterConfig::windows` in the facade. See `docs/windows-installers.md`.
+- Linux update helper (a mode of the application executable, see
+  `docs/adr/0003-linux-update-helper.md`): acknowledges the current and
+  staged layouts before the application quits, swaps the managed prefix only
+  after the application has exited, relaunches, waits for the startup health
+  signal, rolls back and relaunches the previous version when the new one
+  exits first, and records failures for the next start. `LinuxUpdater`
+  stages a checked release and hands it to the helper.
+- GPUI facade: `run_update_helper_if_requested`, the
+  `Updater::main_window_opened` health signal, previous-update failures
+  surfaced through `Updater::previous_update_failure` and
+  `UpdaterEvent::PreviousUpdateFailed`, and `UpdaterConfig::native_feed`,
+  which selects the Linux backend by default on Linux.
 - Release automation with release-plz, gated on a fresh-consumer build of the
   packaged crates on macOS, Windows, and Linux. Published crates include the
   license texts and document platform backends on their own targets on

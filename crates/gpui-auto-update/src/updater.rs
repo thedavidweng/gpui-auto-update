@@ -54,6 +54,12 @@ pub enum UpdaterEvent {
     Failed(UpdateError),
     /// The updater is about to end the application as `Handoff` describes.
     Handoff(Handoff),
+    /// The previous update attempt failed after the application had quit,
+    /// for example because the new version did not start and the previous
+    /// one was restored. Emitted at most once, right after
+    /// [`UpdaterEvent::Ready`]; the error is also available from
+    /// [`Updater::previous_update_failure`] and [`Updater::last_error`].
+    PreviousUpdateFailed(UpdateError),
 }
 
 /// Messages from background work, applied on the foreground in order.
@@ -63,7 +69,9 @@ enum Message {
         automatic: AutomaticChecks,
         automatic_checks: bool,
         channel: Option<Channel>,
+        previous_failure: Option<UpdateError>,
     },
+    StartupConfirmed(Result<(), UpdateError>),
     CheckFinished {
         id: Option<u64>,
         kind: CheckKind,
@@ -121,6 +129,8 @@ pub struct Updater {
     hooks: Rc<RefCell<BTreeMap<u64, PrepareHook>>>,
     next_id: u64,
     last_error: Option<UpdateError>,
+    previous_failure: Option<UpdateError>,
+    startup_confirmation: Option<Task<()>>,
     checks: BTreeMap<u64, Task<()>>,
     operation: Option<Task<()>>,
     handoff_task: Option<Task<()>>,
@@ -194,6 +204,14 @@ impl Updater {
                 backend.set_handoff_gate(gate);
                 backend.attach(&coordinator);
                 let capability = capability.unwrap_or_else(|| backend.capability());
+                // Only installations that update themselves can have been
+                // left a report by this library's helper or installer.
+                let previous_failure = match capability {
+                    Capability::SelfManaged | Capability::TemporarilyUnavailable => {
+                        guarded(|| Ok(backend.take_previous_failure())).unwrap_or(None)
+                    }
+                    _ => None,
+                };
                 if let Err(error) = coordinator.set_capability(capability) {
                     tracing::warn!(kind_of_error = ?error.kind(), "could not apply the update capability: {error}");
                 }
@@ -203,6 +221,7 @@ impl Updater {
                     automatic_checks: automatic.automatic_checks_enabled(),
                     channel: backend.channel(),
                     automatic: automatic.clone(),
+                    previous_failure,
                 });
                 if let Some(result) = automatic.run_launch_check() {
                     let _ = tx.unbounded_send(Message::CheckFinished {
@@ -229,6 +248,8 @@ impl Updater {
             hooks: Rc::default(),
             next_id: 0,
             last_error: None,
+            previous_failure: None,
+            startup_confirmation: None,
             checks: BTreeMap::new(),
             operation: None,
             handoff_task: None,
@@ -290,6 +311,15 @@ impl Updater {
     /// The most recent failure of a manual check or other operation.
     pub fn last_error(&self) -> Option<&UpdateError> {
         self.last_error.as_ref()
+    }
+
+    /// What went wrong with the previous update attempt after the
+    /// application had quit, once startup finished: for example a new
+    /// version that did not start, after which the previous version was
+    /// restored. Show it to the user; it is reported only on the first start
+    /// after the failure. See [`UpdaterEvent::PreviousUpdateFailed`].
+    pub fn previous_update_failure(&self) -> Option<&UpdateError> {
+        self.previous_failure.as_ref()
     }
 
     /// Whether background checks run.
@@ -498,6 +528,28 @@ impl Updater {
         })
     }
 
+    /// Tells the updater that the application's main window has opened.
+    ///
+    /// Call it once, right after the main window is shown, on every start.
+    /// After an update on Linux, the helper keeps the previous version until
+    /// this confirmation arrives and restores it if the new version exits
+    /// first, so an application that never calls this has every update
+    /// reported as unconfirmed. On other platforms, and when the
+    /// application was not started by an update, it does nothing. The
+    /// confirmation is written on the background executor; later calls are
+    /// ignored, and a failure is reported with [`UpdaterEvent::Failed`].
+    pub fn main_window_opened(&mut self, cx: &mut Context<Self>) {
+        if self.startup_confirmation.is_some() {
+            return;
+        }
+        let backend = self.backend.clone();
+        let tx = self.tx.clone();
+        self.startup_confirmation = Some(cx.background_spawn(async move {
+            let result = guarded(|| backend.confirm_startup());
+            let _ = tx.unbounded_send(Message::StartupConfirmed(result));
+        }));
+    }
+
     /// Shows `preview` instead of the real state. While previewing nothing
     /// is checked, downloaded, or installed; see [`PreviewState`].
     pub fn enter_preview(&mut self, preview: PreviewState, cx: &mut Context<Self>) {
@@ -542,12 +594,23 @@ impl Updater {
                 automatic,
                 automatic_checks,
                 channel,
+                previous_failure,
             } => {
                 self.automatic = Some(automatic);
                 self.automatic_checks = automatic_checks;
                 self.channel = channel;
                 self.ready = true;
                 cx.emit(UpdaterEvent::Ready);
+                if let Some(error) = previous_failure {
+                    tracing::warn!(
+                        kind_of_error = ?error.kind(),
+                        diagnostic = error.diagnostic(),
+                        "the previous update failed: {error}"
+                    );
+                    self.last_error = Some(error.clone());
+                    self.previous_failure = Some(error.clone());
+                    cx.emit(UpdaterEvent::PreviousUpdateFailed(error));
+                }
                 cx.notify();
                 self.schedule_periodic_checks(cx);
                 for kind in std::mem::take(&mut self.pending_checks) {
@@ -590,6 +653,11 @@ impl Updater {
                         cx.notify();
                     }
                     Err(error) => self.report(error, cx),
+                }
+            }
+            Message::StartupConfirmed(result) => {
+                if let Err(error) = result {
+                    self.report(error, cx);
                 }
             }
             Message::OperationFinished(result) => {

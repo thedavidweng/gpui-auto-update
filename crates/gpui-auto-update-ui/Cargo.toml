@@ -16,5 +16,8 @@ categories = ["gui"]
 gpui.workspace = true
 gpui-auto-update.workspace = true
 
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+
 [lints]
 workspace = true

@@ -62,7 +62,8 @@ Rules:
 7. **Where the Linux helper binary lives is not decided here.** Options
    include a binary target in `gpui-auto-update-linux` or a helper mode of the
    host executable. The Linux helper ticket decides and records it in a
-   follow-up ADR.
+   follow-up ADR. (Decided in ADR 0003: a helper mode of the application
+   executable.)
 
 ## Consequences
 
