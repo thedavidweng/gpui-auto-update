@@ -34,10 +34,13 @@ mod hub;
 mod mapping;
 #[cfg(all(target_os = "macos", feature = "sparkle"))]
 mod native;
+mod presentation;
 
 pub use backend::{DEFAULT_CHECK_TIMEOUT, SparkleBackend, SparklePreferences};
 pub use engine::SparkleEngine;
 pub use event::{
-    NoUpdateReason, SparkleError, SparkleEvent, SparkleUpdate, UpdateStage, UserChoice,
+    NoUpdateReason, RelaunchContinuation, SessionState, SparkleError, SparkleEvent, SparkleUpdate,
+    UpdateStage, UserChoice,
 };
 pub use hub::SparkleEvents;
+pub use presentation::{GpuiPresentation, PresentationPolicy};

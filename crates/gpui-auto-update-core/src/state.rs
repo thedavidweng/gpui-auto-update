@@ -313,7 +313,11 @@ impl UpdateState {
                 error,
             },
             (
-                Self::Downloading { .. }
+                // Available is included for backends whose engine downloads
+                // or validates on its own and may report a session failure
+                // before any step was mirrored into the state.
+                Self::Available(_)
+                | Self::Downloading { .. }
                 | Self::Verifying(_)
                 | Self::Staged(_)
                 | Self::Installing(_)
