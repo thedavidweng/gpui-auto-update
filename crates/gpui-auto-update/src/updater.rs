@@ -181,6 +181,7 @@ impl Updater {
             let backend = backend.clone();
             let tx = tx.clone();
             cx.background_spawn(async move {
+                backend.attach(&coordinator);
                 let capability = capability.unwrap_or_else(|| backend.capability());
                 if let Err(error) = coordinator.set_capability(capability) {
                     tracing::warn!(kind_of_error = ?error.kind(), "could not apply the update capability: {error}");
@@ -762,10 +763,15 @@ fn install(
 }
 
 /// Moves to [`UpdateState::Staged`] after a successful stage, whether the
-/// backend reported every step, only some, or none.
+/// backend reported every step, only some, or none. A backend whose engine
+/// went on to install (Sparkle, when the user chose to install right away)
+/// keeps its later state.
 fn finish_staging(coordinator: &UpdateCoordinator) -> Result<(), UpdateError> {
     match coordinator.state() {
-        UpdateState::Staged(_) => Ok(()),
+        UpdateState::Staged(_)
+        | UpdateState::Installing(_)
+        | UpdateState::WaitingForQuit(_)
+        | UpdateState::Relaunching(_) => Ok(()),
         UpdateState::Available(_) => {
             coordinator.apply(UpdateEvent::DownloadStarted { total: None })?;
             coordinator.apply(UpdateEvent::Staged)

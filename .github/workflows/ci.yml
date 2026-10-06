@@ -65,6 +65,25 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --no-deps --locked
 
+  sparkle:
+    name: Sparkle backend (macOS, real framework)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Fetch the pinned Sparkle distribution
+        run: cargo run --locked -q -p gpui-auto-update-cli -- sparkle fetch --out "$RUNNER_TEMP/sparkle"
+      - name: Clippy and tests with Sparkle linked
+        env:
+          SPARKLE_FRAMEWORK_PATH: ${{ runner.temp }}/sparkle
+          DYLD_FRAMEWORK_PATH: ${{ runner.temp }}/sparkle
+        run: |
+          cargo clippy --locked -p gpui-auto-update-macos --features sparkle --all-targets -- -D warnings
+          cargo test --locked -p gpui-auto-update-macos --features sparkle -- --include-ignored
+
   msrv:
     name: MSRV (non-GPUI crates)
     runs-on: ubuntu-latest

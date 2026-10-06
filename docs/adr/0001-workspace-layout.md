@@ -54,10 +54,11 @@ Rules:
 5. **MSRV**: the non-GPUI crates declare `rust-version = "1.85"` (the edition
    2024 floor), which CI checks. The GPUI crates declare no `rust-version`,
    following `gpui` itself, which only supports the latest stable Rust.
-6. **The Sparkle binding (`sparkle-updater`) is not a dependency yet.** Its
-   build script panics on macOS when `Sparkle.framework` is missing, so it will
-   be added behind an opt-in feature of the macOS backend by the macOS backend
-   ticket. Default workspace builds and tests must not require the framework.
+6. **The Sparkle binding (`sparkle-updater`) is an opt-in dependency.** Its
+   build script panics on macOS when `Sparkle.framework` is missing, so it is
+   enabled only by the `sparkle` feature of the macOS backend (and of the
+   facade). Default workspace builds and tests must not require the framework.
+   See ADR 0002.
 7. **Where the Linux helper binary lives is not decided here.** Options
    include a binary target in `gpui-auto-update-linux` or a helper mode of the
    host executable. The Linux helper ticket decides and records it in a

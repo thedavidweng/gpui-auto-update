@@ -51,6 +51,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   backend-owned relaunch, asynchronous prepare-to-install hooks, an install
   busy guard, a debug-build install guard, deterministic preview states, and
   per-platform default preference file locations.
+- macOS backend on Sparkle 2 (`SPUUpdater` through `sparkle-updater`, behind
+  the opt-in `sparkle` feature): manual checks use Sparkle's standard UI,
+  background checks use Sparkle's background check, the automatic-update
+  preference stays in Sparkle and is mirrored, Sparkle errors become
+  structured update errors, and Sparkle-driven downloads, installs, and
+  relaunches are reflected in the update state. The facade selects it with
+  `UpdaterConfig::sparkle` and hands off with `Handoff::BackendOwned`.
+  `UpdateBackend::attach` lets backends report state changes made by their
+  native engine. See `docs/adr/0002-sparkle-binding.md`.
 - Release automation with release-plz, gated on a fresh-consumer build of the
   packaged crates on macOS, Windows, and Linux. Published crates include the
   license texts and document platform backends on their own targets on
