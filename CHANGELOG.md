@@ -60,6 +60,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `UpdaterConfig::sparkle` and hands off with `Handoff::BackendOwned`.
   `UpdateBackend::attach` lets backends report state changes made by their
   native engine. See `docs/adr/0002-sparkle-binding.md`.
+- Windows backend: per-user updates from declared per-architecture feeds,
+  verified staging with the release version confirmed from the artifact's PE
+  version resource, Inno Setup silent handoff with a configurable switch set
+  and `/DIR=` pinned to the running install, portable single-executable
+  in-place replacement, an `InstallerStrategy` extension point for MSI and
+  other installers, structured errors when an installer cannot start, and
+  `UpdaterConfig::windows` in the facade. See `docs/windows-installers.md`.
 - Release automation with release-plz, gated on a fresh-consumer build of the
   packaged crates on macOS, Windows, and Linux. Published crates include the
   license texts and document platform backends on their own targets on
