@@ -2451,6 +2451,9 @@ version = "0.0.0"
 dependencies = [
  "gpui",
  "gpui-auto-update",
+ "tempfile",
+ "thiserror 2.0.21",
+ "url",
 ]
 
 [[package]]
