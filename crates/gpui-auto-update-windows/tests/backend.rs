@@ -13,10 +13,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use gpui_auto_update_core::feed::Arch;
+use gpui_auto_update_core::feed::{Arch, Channel as FeedChannel};
 use gpui_auto_update_core::version::ReleaseVersion;
 use gpui_auto_update_core::{
-    Capability, CheckKind, CheckOutcome, ErrorKind, UpdateCoordinator, UpdateError, UpdateState,
+    Capability, Channel, CheckKind, CheckOutcome, ErrorKind, UpdateCoordinator, UpdateError,
+    UpdateState,
 };
 use gpui_auto_update_windows::{
     InnoSetup, InstallTarget, InstallerCommand, InstallerLauncher, InstallerStrategy,
@@ -781,4 +782,88 @@ fn a_portable_install_whose_executable_is_missing_is_not_modified() {
     assert_eq!(error.kind(), ErrorKind::Replacement);
     assert!(!fixture.exe().exists());
     assert!(!fixture.install_dir.join("demo.exe.previous").exists());
+}
+
+// ---------------------------------------------------------------------------
+// Channels
+
+fn on_channel(item: String, channel: &str) -> String {
+    item.replacen(
+        "<item>",
+        &format!("<item>\n      <sparkle:channel>{channel}</sparkle:channel>"),
+        1,
+    )
+}
+
+#[test]
+fn the_selected_channel_chooses_which_feed_entries_are_staged() {
+    let fixture = Fixture::new();
+    let stable = PeImage::installer("1.5.0").build();
+    let beta = PeImage::installer("1.6.0-beta.1").build();
+    let base = serve_lazy();
+    let xml = feed(&[
+        item(
+            "1.5.0",
+            "x86_64",
+            &format!("{}/stable", base.url),
+            &stable,
+            &stable,
+        ),
+        on_channel(
+            item(
+                "1.6.0-beta.1",
+                "x86_64",
+                &format!("{}/beta", base.url),
+                &beta,
+                &beta,
+            ),
+            "beta",
+        ),
+    ]);
+    base.set(vec![
+        ("/feed.xml", xml),
+        ("/stable", stable),
+        ("/beta", beta),
+    ]);
+    let url = leak(format!("{}/feed.xml", base.url));
+    let backend = WindowsBackend::new(fixture.config(inno(), &[(Arch::X86_64, url)])).unwrap();
+    assert_eq!(backend.channel(), None);
+
+    let (coordinator, result) = check_and_stage(&backend);
+    result.unwrap();
+    assert!(matches!(coordinator.state(), UpdateState::Staged(u) if u.version == "1.5.0"));
+
+    backend.set_channel(Some(Channel::new("beta"))).unwrap();
+    assert_eq!(backend.channel(), Some(Channel::new("beta")));
+    let (coordinator, result) = check_and_stage(&backend);
+    result.unwrap();
+    assert!(matches!(
+        coordinator.state(),
+        UpdateState::Staged(u)
+            if u.version == "1.6.0-beta.1" && u.channel == Some(Channel::new("beta"))
+    ));
+}
+
+#[test]
+fn a_configured_channel_is_the_initial_channel() {
+    let fixture = Fixture::new();
+    let backend = WindowsBackend::new(
+        fixture
+            .config(
+                inno(),
+                &[(Arch::X86_64, "https://example.invalid/feed.xml")],
+            )
+            .with_channel(FeedChannel::new("beta").unwrap()),
+    )
+    .unwrap();
+    assert_eq!(backend.channel(), Some(Channel::new("beta")));
+
+    let error = backend
+        .set_channel(Some(Channel::new("not a channel")))
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Configuration);
+    assert_eq!(backend.channel(), Some(Channel::new("beta")));
+
+    backend.set_channel(None).unwrap();
+    assert_eq!(backend.channel(), None);
 }

@@ -1,6 +1,6 @@
 //! The Windows backend behind the facade's [`UpdateBackend`] contract.
 
-use gpui_auto_update_core::{AvailableUpdate, Capability, UpdateError};
+use gpui_auto_update_core::{AvailableUpdate, Capability, Channel, UpdateError};
 use gpui_auto_update_windows::{WindowsBackend, WindowsHandoff, WindowsUpdateConfig};
 
 use crate::backend::{Handoff, ProgressSink, UpdateBackend};
@@ -25,6 +25,14 @@ impl UpdateBackend for WindowsBackend {
 
     fn relaunch(&self) -> Result<Handoff, UpdateError> {
         self.relaunch_handoff().map(handoff)
+    }
+
+    fn channel(&self) -> Option<Channel> {
+        WindowsBackend::channel(self)
+    }
+
+    fn set_channel(&self, channel: Option<Channel>) -> Result<(), UpdateError> {
+        WindowsBackend::set_channel(self, channel)
     }
 }
 
