@@ -10,9 +10,10 @@ mod plist;
 mod sign;
 mod validate;
 
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use anyhow::Result;
+use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand, ValueEnum};
 
 use pins::Pins;
@@ -69,6 +70,39 @@ pub fn run(args: SparkleArgs) -> Result<ExitCode> {
         SparkleCommand::Sign(args) => sign::run(args),
         SparkleCommand::Validate(args) => validate::run(args),
     }
+}
+
+/// Path of `bin/<tool>` in a Sparkle distribution extracted by
+/// `sparkle fetch`, after checking that the distribution's framework is a
+/// pinned Sparkle release.
+pub fn distribution_tool(dist: &Path, tool: &str) -> Result<PathBuf> {
+    let framework = dist.join(bundle::FRAMEWORK_NAME);
+    let version = bundle::framework_version(&framework).with_context(|| {
+        format!(
+            "{} is not a Sparkle distribution; extract one with `gpui-auto-update sparkle fetch`",
+            dist.display()
+        )
+    })?;
+    let pins = Pins::load()?;
+    if pins.get(&version).is_none() {
+        bail!(
+            "{} contains Sparkle {version}, which is not a pinned release (pinned: {})",
+            dist.display(),
+            pins.releases
+                .iter()
+                .map(|p| p.version.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    let path = dist.join("bin").join(tool);
+    if !path.is_file() {
+        bail!(
+            "the Sparkle {version} distribution in {} has no bin/{tool}",
+            dist.display()
+        );
+    }
+    Ok(path)
 }
 
 fn versions() -> Result<ExitCode> {

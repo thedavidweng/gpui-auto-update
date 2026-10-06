@@ -55,3 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   packaged crates on macOS, Windows, and Linux. Published crates include the
   license texts and document platform backends on their own targets on
   docs.rs.
+- CLI: `gpui-auto-update feed native` signs Windows and Linux artifacts into
+  one native feed per OS and architecture, with immutable versioned https
+  artifact URLs and validation by the updater's own parser; `feed sparkle`
+  runs Sparkle's `generate_appcast` (including deltas) from a pinned
+  distribution. Both refuse unsigned entries and keys that do not match the
+  app's public key, and support explicit key-rotation bridge releases. See
+  `docs/feed-generation.md`.

@@ -155,8 +155,6 @@ impl PrivateKey {
 
     /// Signs `data` with pure Ed25519, producing a Sparkle
     /// `sparkle:edSignature` value.
-    // No `keys` subcommand signs; this is the signing entry point for feeds.
-    #[allow(dead_code)]
     pub fn sign(&self, data: &[u8]) -> EdSignature {
         let signature = match &self.inner {
             Inner::Seed(key) => key.sign(data),
