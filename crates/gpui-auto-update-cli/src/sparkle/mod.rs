@@ -16,7 +16,8 @@ use std::process::ExitCode;
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand, ValueEnum};
 
-use pins::Pins;
+pub use pins::Pins;
+pub use validate::{check_unsigned_app, is_reverse_dns};
 
 #[derive(Debug, Args)]
 pub struct SparkleArgs {
@@ -103,6 +104,20 @@ pub fn distribution_tool(dist: &Path, tool: &str) -> Result<PathBuf> {
         );
     }
     Ok(path)
+}
+
+/// The Sparkle version of a distribution extracted by `sparkle fetch`.
+pub fn distribution_version(dist: &Path) -> Result<String> {
+    bundle::framework_version(&dist.join(bundle::FRAMEWORK_NAME))
+}
+
+/// The string values of an application bundle's Info.plist.
+pub fn app_info_strings(app: &Path) -> Result<std::collections::BTreeMap<String, String>> {
+    let info = bundle::read_dict(&app.join("Contents/Info.plist"))?;
+    Ok(info
+        .iter()
+        .filter_map(|(k, v)| v.as_string().map(|s| (k.clone(), s.to_owned())))
+        .collect())
 }
 
 fn versions() -> Result<ExitCode> {

@@ -2,9 +2,25 @@
 
 Release and integration tooling for [gpui-auto-update](https://crates.io/crates/gpui-auto-update): project initialization, doctor checks, signing keys, feed generation, and release verification. Installs the `gpui-auto-update` binary; not needed at application runtime.
 
-> Pre-release: the `sparkle`, `keys`, `feed`, and `verify` commands are implemented so far. See the
+> Pre-release: the `init`, `doctor`, `sparkle`, `keys`, `feed`, and `verify` commands are
+> implemented so far. See the
 > [project README](https://github.com/thedavidweng/gpui-auto-update) for
 > status.
+
+## Project setup and doctor
+
+```sh
+gpui-auto-update init                    # explain the configuration this package needs
+gpui-auto-update init --write            # append a placeholder [package.metadata.gpui-auto-update] table
+gpui-auto-update doctor --key-env SPARKLE_PRIVATE_KEY --verbose
+```
+
+`init` never chooses identifiers, keys, installer strategies, or hosts; it
+explains them. `doctor` checks app metadata, the public key and key pair,
+Sparkle acquisition and bundle integration, release URLs and published feeds,
+Linux ownership and Windows installer requirements, built artifacts, and
+common CI mistakes, without publishing anything. See
+[docs/doctor.md](https://github.com/thedavidweng/gpui-auto-update/blob/main/docs/doctor.md).
 
 ## Sparkle packaging (macOS)
 
