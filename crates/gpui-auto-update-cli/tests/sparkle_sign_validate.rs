@@ -62,6 +62,11 @@ fn codesign_details(path: &Path) -> String {
     String::from_utf8_lossy(&out.stderr).into_owned()
 }
 
+fn sip_enabled() -> bool {
+    let out = Command::new("csrutil").arg("status").output().unwrap();
+    !String::from_utf8_lossy(&out.stdout).contains("disabled")
+}
+
 fn entitlements_file(dir: &Path, entries: &[(&str, String)]) -> PathBuf {
     let path = dir.join(format!("ent-{}.plist", entries.len()));
     write(&path, &plist_xml(entries));
@@ -165,10 +170,15 @@ fn an_ad_hoc_app_under_library_validation_is_reported_as_unlaunchable() {
     let launched = Command::new(f.app.join("Contents/MacOS/Fixture"))
         .output()
         .unwrap();
-    assert!(
-        !launched.status.success(),
-        "dyld should refuse the framework"
-    );
+    // Hosts with System Integrity Protection disabled (such as GitHub's macOS
+    // runners) do not enforce library validation, so dyld loads the framework
+    // there; the validator must still flag the bundle.
+    if launched.status.success() {
+        assert!(
+            !sip_enabled(),
+            "dyld should refuse the framework: {launched:?}"
+        );
+    }
 
     let out = validate(&f.app, &["--sandbox", "non-sandboxed"]);
     assert_eq!(out.status.code(), Some(1));
