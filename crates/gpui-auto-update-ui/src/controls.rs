@@ -315,6 +315,9 @@ impl Render for UpdateControls {
             .when_some(self.feedback.clone(), |panel, feedback| {
                 panel.child(div().text_sm().text_color(theme.danger).child(feedback))
             })
+            .when_some(summary.previous_update_failure.clone(), |panel, failure| {
+                panel.child(div().text_sm().text_color(theme.danger).child(failure))
+            })
             .when_some(summary.install_notice.clone(), |panel, notice| {
                 panel.child(div().text_xs().text_color(rgb(0x808080)).child(notice))
             })

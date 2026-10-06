@@ -94,6 +94,11 @@ pub struct UpdateSummary {
     pub automatic_updates: Option<bool>,
     /// Why this build will not install updates, when it will not.
     pub install_notice: Option<SharedString>,
+    /// What went wrong with the previous update attempt after the
+    /// application had quit — for example a new version that did not start,
+    /// after which the previous version was restored (see
+    /// [`Updater::previous_update_failure`]). Never set while previewing.
+    pub previous_update_failure: Option<SharedString>,
     /// The preview being shown instead of the real state, if any.
     pub preview: Option<PreviewState>,
 }
@@ -241,6 +246,13 @@ impl UpdateSummary {
             automatic_updates: (updater.is_ready() && !previewing)
                 .then(|| updater.automatic_checks_enabled()),
             install_notice,
+            previous_update_failure: if previewing {
+                None
+            } else {
+                updater
+                    .previous_update_failure()
+                    .map(|error| error.message().to_owned().into())
+            },
             preview: updater.preview(),
         }
     }

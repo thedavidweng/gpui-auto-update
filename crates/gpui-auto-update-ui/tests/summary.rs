@@ -127,3 +127,75 @@ fn action_labels_describe_the_update(cx: &mut TestAppContext) {
         "Dismiss: Version 0.0.0-preview is available."
     );
 }
+
+/// A backend whose previous update was rolled back after the last quit.
+struct RolledBackBackend {
+    failure: std::sync::Mutex<Option<gpui_auto_update::core::UpdateError>>,
+}
+
+impl gpui_auto_update::UpdateBackend for RolledBackBackend {
+    fn capability(&self) -> gpui_auto_update::core::Capability {
+        gpui_auto_update::core::Capability::SelfManaged
+    }
+
+    fn stage(
+        &self,
+        _: &gpui_auto_update::core::AvailableUpdate,
+        _: &gpui_auto_update::ProgressSink,
+    ) -> Result<(), gpui_auto_update::core::UpdateError> {
+        unreachable!("tests never stage")
+    }
+
+    fn install(
+        &self,
+        _: &gpui_auto_update::core::AvailableUpdate,
+        _: &gpui_auto_update::ProgressSink,
+    ) -> Result<gpui_auto_update::Handoff, gpui_auto_update::core::UpdateError> {
+        unreachable!("tests never install")
+    }
+
+    fn take_previous_failure(&self) -> Option<gpui_auto_update::core::UpdateError> {
+        self.failure.lock().unwrap().take()
+    }
+}
+
+#[gpui::test]
+fn a_rolled_back_previous_update_is_surfaced(cx: &mut TestAppContext) {
+    use gpui_auto_update::core::{CheckPolicy, ErrorKind, MemoryPreferenceStore, UpdateError};
+
+    struct UpToDate;
+    impl gpui_auto_update::core::CheckSource for UpToDate {
+        fn check(
+            &self,
+            _: &gpui_auto_update::core::CheckRequest,
+        ) -> Result<gpui_auto_update::core::CheckOutcome, gpui_auto_update::core::UpdateError>
+        {
+            Ok(gpui_auto_update::core::CheckOutcome::UpToDate)
+        }
+    }
+
+    let failure = UpdateError::new(ErrorKind::HealthConfirmation).with_message(
+        "Version 2.0.0 did not start correctly, so the previous version was restored.",
+    );
+    let updater = cx.update(|cx| {
+        gpui_auto_update::init(
+            UpdaterConfig::new("dev.example.ui-rollback", UpToDate)
+                .with_backend(RolledBackBackend {
+                    failure: std::sync::Mutex::new(Some(failure)),
+                })
+                .with_preferences(MemoryPreferenceStore::new())
+                .with_policy(CheckPolicy::recommended().with_check_on_launch(false)),
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    let summary = updater.read_with(cx, |updater, _| UpdateSummary::new(updater, Some("1.0.0")));
+    assert_eq!(
+        summary
+            .previous_update_failure
+            .as_ref()
+            .map(|failure| failure.as_ref()),
+        Some("Version 2.0.0 did not start correctly, so the previous version was restored."),
+        "rollback diagnostics are shown to the user"
+    );
+}
