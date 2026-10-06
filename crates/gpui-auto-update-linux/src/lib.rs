@@ -34,15 +34,40 @@
 //! extracted layout must pass [`validate_layout`] before the
 //! [`StagedRelease`] is returned. The archive contract is documented in the
 //! same document.
+//!
+//! # Installing: helper, health confirmation, rollback
+//!
+//! The staged release is installed by the update helper, a mode of the
+//! application's own executable: call [`run_helper_if_requested`] first in
+//! `main`. [`HelperCommand::hand_off`] starts it and waits until it has
+//! accepted both the current and the staged layout; after
+//! [`PendingHelper::commit`] the application quits normally and the helper
+//! swaps the prefix, relaunches, and waits for [`confirm_startup`] from the
+//! new version, rolling back if it exits first. Failures after the quit are
+//! recorded and returned once by [`take_diagnostic`] on the next start.
+//! [`LinuxUpdater`] combines staging and the handoff for one managed
+//! install. The protocol is recorded in `docs/adr/0002-linux-update-helper.md`.
 
 #[cfg(target_os = "linux")]
 mod current;
 #[cfg(unix)]
 mod detect;
 #[cfg(unix)]
+mod diagnostic;
+#[cfg(unix)]
 mod extract;
+#[cfg(unix)]
+mod handoff;
+#[cfg(unix)]
+mod health;
+#[cfg(unix)]
+mod helper;
 #[cfg(any(target_os = "linux", test))]
 mod proc_status;
+#[cfg(unix)]
+mod siblings;
+#[cfg(unix)]
+mod updater;
 
 #[cfg(target_os = "linux")]
 pub use current::detect_current;
@@ -53,6 +78,18 @@ pub use detect::{
     marker_contents,
 };
 #[cfg(unix)]
+pub use diagnostic::{HelperDiagnostic, HelperOutcome, take_diagnostic};
+#[cfg(unix)]
 pub use extract::{
     ArchiveLimits, LayoutError, ReleaseStager, StageError, StagedRelease, validate_layout,
 };
+#[cfg(unix)]
+pub use handoff::{HandoffError, HandoffRequest, HelperCommand, PendingHelper};
+#[cfg(unix)]
+pub use health::{
+    HEALTH_FILE_ENV, HealthError, StartupConfirmation, confirm_startup, confirm_startup_for,
+};
+#[cfg(unix)]
+pub use helper::run_helper_if_requested;
+#[cfg(unix)]
+pub use updater::LinuxUpdater;

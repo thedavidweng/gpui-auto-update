@@ -34,9 +34,9 @@ A managed install is a directory, the *prefix*, laid out as:
 - The whole prefix is replaced as a unit during an update, so it must contain
   only files that belong to the release.
 
-Later tickets add further required files (for example the update helper) to
-this layout; the marker version will change if the layout changes
-incompatibly.
+The update helper is a mode of `bin/<app>` itself (see
+`docs/adr/0002-linux-update-helper.md`), so no other file is required. The
+marker version will change if the layout changes incompatibly.
 
 ## Marker
 
@@ -169,6 +169,82 @@ tar -czf demo-1.5.0-linux-x86_64.tar.gz demo-1.5.0-linux-x86_64
 
 Do not create the archive from inside the directory (`tar -czf … .`), which
 produces `./` entries and no release root.
+
+## Installing a staged release
+
+The staged release is installed by the *update helper*, a mode of the
+application's own executable. The decision and the full protocol are in
+`docs/adr/0002-linux-update-helper.md`; this section is the integration
+contract.
+
+### What the application must do
+
+```rust
+fn main() {
+    // Before anything else, in particular before creating the GPUI app.
+    gpui_auto_update::run_update_helper_if_requested();
+    // ...create the application and the updater, for example with
+    // UpdaterConfig::native_feed, then, once the main window is open:
+    // updater.update(cx, |updater, cx| updater.main_window_opened(cx));
+}
+```
+
+- `run_update_helper_if_requested` returns at once unless the process was
+  started as the helper.
+- `Updater::main_window_opened` is the *health signal*. Call it on every
+  start, after the main window has opened. When the process was not started
+  by the helper it does nothing.
+- On start, show `Updater::previous_update_failure` (also emitted as
+  `UpdaterEvent::PreviousUpdateFailed`) if it is set: it reports a rollback
+  or a failed installation once.
+
+Without the facade, the same pieces are `gpui_auto_update_linux::
+run_helper_if_requested`, `confirm_startup`, and `take_diagnostic`, and
+`LinuxUpdater` (stage, hand off) or the lower-level `HelperCommand`.
+
+### Sequence
+
+1. The release is staged and validated next to the install (above).
+2. Installing runs the prepare-to-install hooks, then starts the helper. The
+   helper checks both the current and the staged layout and acknowledges
+   before the application is asked to quit. A refusal is reported as a
+   `HelperLaunch` error and nothing changes.
+3. The application quits through its normal quit path. The helper waits
+   until the process has exited.
+4. The helper renames the prefix to a backup sibling, renames the staged
+   prefix into its place, and launches `<prefix>/bin/<app>` with
+   `GPUI_AUTO_UPDATE_HEALTH_FILE` set.
+5. When the new version confirms its start, the backup is deleted. If it
+   exits before confirming, the previous version is restored and relaunched.
+   If it neither confirms nor exits within 60 seconds, it keeps running, the
+   backup is kept for manual recovery, and the update is reported as
+   unconfirmed.
+
+### Files next to the install
+
+All of these live in the prefix's parent directory, outside the prefix, so
+they survive a swap:
+
+| Name | Purpose |
+| --- | --- |
+| `.<prefix>.gpui-auto-update-staged-<version>-<random>/` | The staged release (removed after the swap) |
+| `.<prefix>.gpui-auto-update-downloads/` | The verified download while it is extracted |
+| `.<prefix>.gpui-auto-update-backup-*` | The previous version until the new one confirms its start |
+| `.<prefix>.gpui-auto-update-failed-*` | A failed new version while it is rolled back |
+| `.<prefix>.gpui-auto-update-health-*` | The health file the new version creates |
+| `.<prefix>.gpui-auto-update-diagnostic` | The last helper failure, read and removed by the next start |
+
+### Diagnostics
+
+The diagnostic is a small text file (at most 16 KiB) written atomically. It
+records one of these outcomes, each surfaced as an `UpdateError`:
+
+| Outcome | Error kind | Meaning |
+| --- | --- | --- |
+| `rolled-back` | `HealthConfirmation` (or `Relaunch`) | The new version did not start; the previous one was restored and relaunched |
+| `not-installed` | `Replacement` | The new version could not be put in place; the current one was kept and relaunched |
+| `unconfirmed` | `HealthConfirmation` | The new version runs but never confirmed its start; the backup was kept |
+| `rollback-failed` | `Rollback` | Restoring the previous version failed; the detail names where it is kept |
 
 ## Recommended install location
 

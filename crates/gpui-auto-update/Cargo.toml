@@ -17,6 +17,7 @@ gpui.workspace = true
 gpui-auto-update-core.workspace = true
 futures = { version = "0.3.34", default-features = false, features = ["std"] }
 tracing = "0.1.44"
+url = "2.5.8"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 gpui-auto-update-macos.workspace = true
@@ -29,6 +30,11 @@ gpui-auto-update-linux.workspace = true
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
+
+# The Linux backend adapter is also compiled into unit tests on other Unix
+# hosts, so it is type-checked and tested where GPUI cannot be cross-built.
+[target.'cfg(unix)'.dev-dependencies]
+gpui-auto-update-linux.workspace = true
 
 [lints]
 workspace = true

@@ -51,3 +51,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   backend-owned relaunch, asynchronous prepare-to-install hooks, an install
   busy guard, a debug-build install guard, deterministic preview states, and
   per-platform default preference file locations.
+- Linux update helper (a mode of the application executable, see
+  `docs/adr/0002-linux-update-helper.md`): acknowledges the current and
+  staged layouts before the application quits, swaps the managed prefix only
+  after the application has exited, relaunches, waits for the startup health
+  signal, rolls back and relaunches the previous version when the new one
+  exits first, and records failures for the next start. `LinuxUpdater`
+  stages a checked release and hands it to the helper.
+- GPUI facade: `run_update_helper_if_requested`, the
+  `Updater::main_window_opened` health signal, previous-update failures
+  surfaced through `Updater::previous_update_failure` and
+  `UpdaterEvent::PreviousUpdateFailed`, and `UpdaterConfig::native_feed`,
+  which selects the Linux backend by default on Linux.
