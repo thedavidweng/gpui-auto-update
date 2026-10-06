@@ -120,6 +120,22 @@ fn a_failed_download_becomes_failed_and_can_be_retried_by_checking() {
 }
 
 #[test]
+fn a_failure_reported_while_an_update_is_available_becomes_failed() {
+    // A backend whose engine downloads on its own (Sparkle) can report a
+    // session failure before any step was mirrored into the state.
+    let coordinator = with_available_update();
+    let error = UpdateError::new(ErrorKind::Signature);
+
+    coordinator
+        .apply(UpdateEvent::Failed(error.clone()))
+        .unwrap();
+
+    assert_eq!(coordinator.state(), UpdateState::Failed(error));
+    coordinator.apply(UpdateEvent::Dismissed).unwrap();
+    assert_eq!(coordinator.state(), UpdateState::Idle);
+}
+
+#[test]
 fn overlapping_operations_are_rejected_without_changing_state() {
     let coordinator = with_available_update();
     coordinator

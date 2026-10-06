@@ -16,7 +16,7 @@ use gpui_auto_update_core::{
     UpdateCoordinator, UpdateError, UpdateEvent, UpdateState,
 };
 
-use crate::backend::{Handoff, ProgressSink, UpdateBackend};
+use crate::backend::{Handoff, HandoffGate, PostponedHandoff, ProgressSink, UpdateBackend};
 use crate::config::{BuildProfile, UpdaterConfig};
 use crate::paths::default_preferences_path;
 use crate::preview::PreviewState;
@@ -78,6 +78,9 @@ enum Message {
         result: Result<(), UpdateError>,
     },
     OperationFinished(Result<Option<Handoff>, UpdateError>),
+    /// A backend-initiated install or relaunch (Sparkle's own UI) asks to
+    /// continue once the prepare-to-install hooks have run.
+    HandoffRequested(Box<dyn PostponedHandoff>),
 }
 
 enum Step {
@@ -120,6 +123,7 @@ pub struct Updater {
     last_error: Option<UpdateError>,
     checks: BTreeMap<u64, Task<()>>,
     operation: Option<Task<()>>,
+    handoff_task: Option<Task<()>>,
     preference_task: Option<Task<()>>,
     channel_task: Option<Task<()>>,
     periodic: Option<Task<()>>,
@@ -181,6 +185,13 @@ impl Updater {
             let backend = backend.clone();
             let tx = tx.clone();
             cx.background_spawn(async move {
+                let gate: HandoffGate = Arc::new({
+                    let tx = tx.clone();
+                    move |handoff| {
+                        let _ = tx.unbounded_send(Message::HandoffRequested(handoff));
+                    }
+                });
+                backend.set_handoff_gate(gate);
                 backend.attach(&coordinator);
                 let capability = capability.unwrap_or_else(|| backend.capability());
                 if let Err(error) = coordinator.set_capability(capability) {
@@ -220,6 +231,7 @@ impl Updater {
             last_error: None,
             checks: BTreeMap::new(),
             operation: None,
+            handoff_task: None,
             preference_task: None,
             channel_task: None,
             periodic: None,
@@ -458,6 +470,11 @@ impl Updater {
     /// Registers a hook that saves application state before the updater
     /// installs an update or relaunches the application.
     ///
+    /// Hooks also run when the backend's own UI starts installing (the
+    /// user clicking "Install" in Sparkle's window): the backend postpones
+    /// its relaunch until the hooks completed, and a failing hook leaves
+    /// it postponed so the update installs when the application quits.
+    ///
     /// Hooks run on the foreground in registration order and may do
     /// asynchronous work through the returned task; the updater waits for
     /// each one, with no timeout, before handing off. A hook that fails
@@ -583,6 +600,23 @@ impl Updater {
                     Err(error) => self.report(error, cx),
                 }
                 cx.notify();
+            }
+            Message::HandoffRequested(handoff) => {
+                tracing::info!(
+                    "an install the backend started itself waits for the prepare-to-install hooks"
+                );
+                let hooks: Vec<PrepareHook> = self.hooks.borrow().values().cloned().collect();
+                let tx = self.tx.clone();
+                self.handoff_task = Some(cx.spawn(async move |_, cx: &mut AsyncApp| {
+                    match run_prepare_hooks(hooks, cx).await {
+                        Ok(()) => handoff.resume(),
+                        // The backend stays postponed and installs when the
+                        // application quits.
+                        Err(error) => {
+                            let _ = tx.unbounded_send(Message::OperationFinished(Err(error)));
+                        }
+                    }
+                }));
             }
         }
     }

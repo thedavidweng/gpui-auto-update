@@ -1,8 +1,8 @@
 //! Pure translations from Sparkle's vocabulary to the core's.
 
 use gpui_auto_update_core::{
-    AvailableUpdate, Channel, CheckOutcome, ErrorKind, ReleaseNotes, ReleaseNotesFormat,
-    UpdateError, UpdateEvent, UpdateState,
+    AvailableUpdate, Capability, Channel, CheckOutcome, ErrorKind, ReleaseNotes,
+    ReleaseNotesFormat, UpdateError, UpdateEvent, UpdateState,
 };
 
 use crate::event::{SparkleError, SparkleEvent, SparkleUpdate, UpdateStage, UserChoice};
@@ -163,10 +163,20 @@ pub(crate) fn lifecycle_phase(event: &SparkleEvent) -> Option<Phase> {
 /// The events that move `current` to `phase`, filling in the steps Sparkle
 /// does not report separately (a silently downloaded update goes straight
 /// to "install on quit"). Never moves the state backwards.
-pub(crate) fn catch_up(current: &UpdateState, phase: &Phase) -> Vec<UpdateEvent> {
+///
+/// A failure is surfaced when the state is mid-flight or when
+/// `had_session` says Sparkle had found an update: a check that fails
+/// before finding anything stays silent (background checks are silent
+/// unless an update is found), while a session that fails after a
+/// discovery is visible.
+pub(crate) fn catch_up(
+    current: &UpdateState,
+    phase: &Phase,
+    had_session: bool,
+) -> Vec<UpdateEvent> {
     match phase {
         Phase::Failed(error) => {
-            return if rank_of_state(current).is_some_and(|rank| rank > 0) {
+            return if had_session || rank_of_state(current).is_some_and(|rank| rank > 0) {
                 vec![UpdateEvent::Failed(error.clone())]
             } else {
                 Vec::new()
@@ -195,6 +205,23 @@ pub(crate) fn catch_up(current: &UpdateState, phase: &Phase) -> Vec<UpdateEvent>
             _ => None,
         })
         .collect()
+}
+
+/// Whether a scheduled discovery Sparkle reports on its own (outside any
+/// check the coordinator knows about) should be adopted into the state.
+///
+/// A discovery that only repeats what the state already shows, or that
+/// arrives while a check, download, or install owns the state, is left to
+/// that operation.
+pub(crate) fn should_adopt_discovery(
+    current: &UpdateState,
+    capability: &Capability,
+    update: &SparkleUpdate,
+) -> bool {
+    if current.is_busy() || !capability.can_self_update() {
+        return false;
+    }
+    !matches!(current.update(), Some(found) if found.version == update.version)
 }
 
 fn rank_of_state(state: &UpdateState) -> Option<u8> {

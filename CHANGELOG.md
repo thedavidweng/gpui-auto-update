@@ -60,6 +60,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `UpdaterConfig::sparkle` and hands off with `Handoff::BackendOwned`.
   `UpdateBackend::attach` lets backends report state changes made by their
   native engine. See `docs/adr/0002-sparkle-binding.md`.
+- macOS backend: Sparkle's scheduled discoveries are adopted into the
+  update state without opening a Sparkle window. Gentle reminders route
+  through a `PresentationPolicy`; the default `GpuiPresentation` leaves
+  scheduled updates to the app, and apps can override it through
+  `SparkleBackend::start_with_policy`. Sparkle's install-and-relaunch waits
+  for the facade's `on_prepare_to_install` hooks and then resumes through
+  `SparkleEvent::RelaunchRequested` and its one-shot `RelaunchContinuation`.
+  Mocked tests cover the routing and the coordination, and real-framework
+  tests (including a bundled app served a loopback appcast) verify the
+  behavior against Sparkle 2.10.0.
 - Windows backend: per-user updates from declared per-architecture feeds,
   verified staging with the release version confirmed from the artifact's PE
   version resource, Inno Setup silent handoff with a configurable switch set

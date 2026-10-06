@@ -33,6 +33,18 @@ name = "sparkle_main_thread"
 harness = false
 required-features = ["sparkle"]
 
+# Bundles itself into a temporary .app and runs a real background check
+# against Sparkle.framework; see the test's module documentation.
+[[test]]
+name = "sparkle_bundle"
+harness = false
+required-features = ["sparkle"]
+
+# NSApplication for the bundled test's event loop.
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+objc2-app-kit = "0.3"
+objc2-foundation = "0.3"
+
 [lints]
 workspace = true
 
