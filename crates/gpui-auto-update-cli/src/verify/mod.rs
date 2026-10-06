@@ -8,7 +8,7 @@
 //! parser, so an unsigned or malformed entry is reported even though
 //! parsing alone would reject the feed.
 
-mod scan;
+pub mod scan;
 
 use std::path::PathBuf;
 use std::process::ExitCode;

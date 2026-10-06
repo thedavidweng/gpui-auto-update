@@ -155,6 +155,40 @@ pub fn run(args: ValidateArgs) -> Result<ExitCode> {
     })
 }
 
+/// One finding from [`check_unsigned_app`].
+pub struct AppFinding {
+    pub error: bool,
+    pub area: &'static str,
+    pub message: String,
+}
+
+/// The `validate` checks that do not need code signatures: Info.plist
+/// metadata, framework placement, run paths, and the license notice.
+pub fn check_unsigned_app(app: &Path, sandbox: SandboxMode) -> Result<Vec<AppFinding>> {
+    let info = bundle::read_dict(&app.join("Contents/Info.plist"))?;
+    let pins = Pins::load()?;
+    let mut report = Report::default();
+    let framework_minimum = check_framework(app, &info, Some(sandbox), &pins, &mut report);
+    check_info(
+        &info,
+        framework_minimum.as_ref(),
+        None,
+        Some(sandbox),
+        &mut report,
+    );
+    check_executable(app, &info, &mut report);
+    check_license(app, &mut report);
+    Ok(report
+        .findings
+        .into_iter()
+        .map(|f| AppFinding {
+            error: f.severity == Severity::Error,
+            area: f.area,
+            message: f.message,
+        })
+        .collect())
+}
+
 /// Dot-separated non-negative integers, one to three components.
 fn numeric_version(s: &str) -> Option<Vec<u64>> {
     let parts: Option<Vec<u64>> = s
@@ -179,7 +213,7 @@ fn compare_versions(a: &[u64], b: &[u64]) -> std::cmp::Ordering {
         .unwrap_or(std::cmp::Ordering::Equal)
 }
 
-fn is_reverse_dns(id: &str) -> bool {
+pub fn is_reverse_dns(id: &str) -> bool {
     id.contains('.')
         && id.split('.').all(|segment| {
             !segment.is_empty()
