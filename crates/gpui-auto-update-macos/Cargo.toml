@@ -35,3 +35,10 @@ required-features = ["sparkle"]
 
 [lints]
 workspace = true
+
+[package.metadata.docs.rs]
+# Platform code is cfg-gated, so document it on the platform it targets.
+default-target = "aarch64-apple-darwin"
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+# docs.rs sets DOCS_RS, which makes sparkle-updater skip linking the framework.
+features = ["sparkle"]

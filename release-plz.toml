@@ -1,0 +1,65 @@
+# release-plz: https://release-plz.dev/docs/config
+#
+# On every push to `main`, release-plz opens or refreshes a release pull
+# request that bumps versions and updates changelogs from Conventional
+# Commits. Merging that pull request publishes the changed crates to
+# crates.io, tags them, and creates the GitHub release. Unpublished workspace
+# members (`publish = false`) are skipped automatically.
+
+[workspace]
+changelog_update = true
+git_tag_enable = true
+# One GitHub release per version, attached to the facade crate below.
+git_release_enable = false
+# Publish only when the release pull request is merged, not on every push.
+release_always = false
+semver_check = true
+# `.github/workflows/release-plz.yml` gates publishing on the fresh-consumer
+# job, which already packages and verify-builds every crate on macOS,
+# Windows, and Linux from the same commit.
+publish_no_verify = true
+pr_labels = ["release"]
+
+# All published crates release in lockstep under one version, so the
+# `gpui-auto-update-*` family always matches.
+#
+# The facade is the crate applications depend on, so its changelog is the
+# repository-level CHANGELOG.md and includes the changes of every crate.
+[[package]]
+name = "gpui-auto-update"
+changelog_path = "./CHANGELOG.md"
+changelog_include = [
+    "gpui-auto-update-core",
+    "gpui-auto-update-macos",
+    "gpui-auto-update-windows",
+    "gpui-auto-update-linux",
+    "gpui-auto-update-ui",
+    "gpui-auto-update-cli",
+]
+git_release_enable = true
+git_release_name = "v{{ version }}"
+version_group = "gpui-auto-update"
+
+[[package]]
+name = "gpui-auto-update-core"
+version_group = "gpui-auto-update"
+
+[[package]]
+name = "gpui-auto-update-macos"
+version_group = "gpui-auto-update"
+
+[[package]]
+name = "gpui-auto-update-windows"
+version_group = "gpui-auto-update"
+
+[[package]]
+name = "gpui-auto-update-linux"
+version_group = "gpui-auto-update"
+
+[[package]]
+name = "gpui-auto-update-ui"
+version_group = "gpui-auto-update"
+
+[[package]]
+name = "gpui-auto-update-cli"
+version_group = "gpui-auto-update"
