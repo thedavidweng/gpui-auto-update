@@ -68,6 +68,22 @@ pub trait UpdateBackend: Send + Sync + 'static {
         Ok(Handoff::Restart { restart_path: None })
     }
 
+    /// Installs the gate a backend asks before an install or relaunch it
+    /// started from its own UI continues.
+    ///
+    /// Some backends can begin installing outside the calls of this trait
+    /// (Sparkle's own window). When such an operation may wait, the backend
+    /// calls the gate with a [`PostponedHandoff`]; the facade runs the
+    /// application's prepare-to-install hooks and then resumes it. The gate
+    /// may be called from any thread and must return quickly.
+    ///
+    /// Called once while the updater starts, before
+    /// [`Self::attach`]. Defaults to leaving every backend-initiated
+    /// operation running immediately.
+    fn set_handoff_gate(&self, gate: HandoffGate) {
+        let _ = gate;
+    }
+
     /// Reports, once, a failure that a previous update attempt left behind
     /// after the application had quit, such as a rollback to this version.
     ///
@@ -128,6 +144,9 @@ impl<T: UpdateBackend + ?Sized> UpdateBackend for Arc<T> {
     fn relaunch(&self) -> Result<Handoff, UpdateError> {
         (**self).relaunch()
     }
+    fn set_handoff_gate(&self, gate: HandoffGate) {
+        (**self).set_handoff_gate(gate)
+    }
     fn take_previous_failure(&self) -> Option<UpdateError> {
         (**self).take_previous_failure()
     }
@@ -162,6 +181,9 @@ impl<T: UpdateBackend + ?Sized> UpdateBackend for Box<T> {
     fn relaunch(&self) -> Result<Handoff, UpdateError> {
         (**self).relaunch()
     }
+    fn set_handoff_gate(&self, gate: HandoffGate) {
+        (**self).set_handoff_gate(gate)
+    }
     fn take_previous_failure(&self) -> Option<UpdateError> {
         (**self).take_previous_failure()
     }
@@ -175,6 +197,22 @@ impl<T: UpdateBackend + ?Sized> UpdateBackend for Box<T> {
         (**self).set_channel(channel)
     }
 }
+
+/// A backend-initiated install or relaunch postponed until the
+/// application's prepare-to-install hooks have run.
+///
+/// Dropping it without resuming leaves the operation postponed; the
+/// backend decides what that means (Sparkle installs when the application
+/// quits).
+pub trait PostponedHandoff: Send + 'static {
+    /// Continues the postponed operation. Only the first call has an
+    /// effect.
+    fn resume(self: Box<Self>);
+}
+
+/// Where a backend delivers its postponed handoffs; installed through
+/// [`UpdateBackend::set_handoff_gate`].
+pub type HandoffGate = Arc<dyn Fn(Box<dyn PostponedHandoff>) + Send + Sync>;
 
 /// How the application ends after an install, as decided by the backend.
 #[derive(Clone, Debug, PartialEq, Eq)]

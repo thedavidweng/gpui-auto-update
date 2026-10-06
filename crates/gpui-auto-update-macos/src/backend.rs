@@ -1,9 +1,9 @@
 //! The Sparkle backend: checks, preferences, channels, and lifecycle
 //! tracking on top of a [`SparkleEngine`].
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::RecvTimeoutError;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -13,7 +13,7 @@ use gpui_auto_update_core::{
 };
 
 use crate::engine::SparkleEngine;
-use crate::event::{SparkleEvent, UserChoice};
+use crate::event::{RelaunchContinuation, SparkleEvent, SparkleUpdate, UserChoice};
 use crate::hub::{EventStream, SparkleEvents};
 use crate::mapping::{self, Phase};
 
@@ -43,6 +43,28 @@ pub struct SparkleBackend {
     events: SparkleEvents,
     check_timeout: Duration,
     attached: Arc<AtomicBool>,
+    gate: Arc<HandoffGate>,
+}
+
+/// Where a postponed relaunch is delivered.
+type Forward = Arc<dyn Fn(RelaunchContinuation) + Send + Sync>;
+
+/// Where postponed relaunches go, shared with the native engine so it can
+/// tell whether a relaunch should wait for save hooks at all.
+#[derive(Default)]
+pub(crate) struct HandoffGate {
+    installed: AtomicBool,
+    forwarding: AtomicBool,
+    forward: Mutex<Option<Forward>>,
+}
+
+impl HandoffGate {
+    /// Whether a gate consumes postponed relaunches; only the native
+    /// engine asks, to decide whether to postpone at all.
+    #[cfg(all(target_os = "macos", feature = "sparkle"))]
+    pub(crate) fn is_installed(&self) -> bool {
+        self.installed.load(Ordering::SeqCst)
+    }
 }
 
 impl SparkleBackend {
@@ -54,6 +76,7 @@ impl SparkleBackend {
             events,
             check_timeout: DEFAULT_CHECK_TIMEOUT,
             attached: Arc::default(),
+            gate: Arc::default(),
         }
     }
 
@@ -66,6 +89,7 @@ impl SparkleBackend {
             events: SparkleEvents::new(),
             check_timeout: DEFAULT_CHECK_TIMEOUT,
             attached: Arc::default(),
+            gate: Arc::default(),
         }
     }
 
@@ -79,6 +103,61 @@ impl SparkleBackend {
     /// The channel Sparkle's notifications arrive on.
     pub fn events(&self) -> &SparkleEvents {
         &self.events
+    }
+
+    /// Installs the gate that decides when a postponed relaunch continues.
+    ///
+    /// When Sparkle starts installing and relaunching from its own UI, the
+    /// engine publishes [`SparkleEvent::RelaunchRequested`] and the gate
+    /// receives its continuation. The gate must resume the continuation
+    /// once the application's save hooks completed; until then Sparkle
+    /// waits, and dropping the continuation leaves the relaunch postponed
+    /// (Sparkle installs when the application quits). The gate may be
+    /// called from any thread and must return quickly.
+    ///
+    /// Without a gate the relaunch is never postponed. The facade installs
+    /// a gate that runs the prepare-to-install hooks; applications using
+    /// this crate directly may install their own. Only the first call
+    /// starts the forwarding thread; later calls replace the gate.
+    pub fn set_handoff_gate(&self, gate: impl Fn(RelaunchContinuation) + Send + Sync + 'static) {
+        *self
+            .gate
+            .forward
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(gate));
+        self.gate.installed.store(true, Ordering::SeqCst);
+        if self.gate.forwarding.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let stream = self.events.subscribe();
+        let slot = Arc::clone(&self.gate);
+        let spawned = thread::Builder::new()
+            .name("gpui-auto-update-relaunch".into())
+            .spawn(move || {
+                while let Some(event) = stream.recv() {
+                    if let SparkleEvent::RelaunchRequested { continuation, .. } = event {
+                        let forward = slot
+                            .forward
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .clone();
+                        if let Some(forward) = forward {
+                            forward(continuation);
+                        }
+                    }
+                }
+            });
+        if let Err(error) = spawned {
+            self.gate.forwarding.store(false, Ordering::SeqCst);
+            tracing::error!("could not start the relaunch gate: {error}");
+        }
+    }
+
+    /// Shares the handoff gate with the engine, so it can tell whether a
+    /// relaunch should wait for the gate or continue at once.
+    #[cfg(all(target_os = "macos", feature = "sparkle"))]
+    pub(crate) fn share_gate(&mut self, gate: Arc<HandoffGate>) {
+        self.gate = gate;
     }
 
     /// Whether this installation may update itself: self-managed whenever a
@@ -101,7 +180,8 @@ impl SparkleBackend {
 
     /// Mirrors Sparkle's lifecycle (downloads, installs, relaunches, and
     /// choices the user makes in Sparkle's windows) into `coordinator`'s
-    /// state from now on. Only the first call has an effect.
+    /// state from now on, including discoveries from Sparkle's own
+    /// scheduled checks. Only the first call has an effect.
     ///
     /// Events are applied on a dedicated thread so that Sparkle's main
     /// thread never waits on the coordinator or its observers.
@@ -110,13 +190,18 @@ impl SparkleBackend {
             return;
         }
         let stream = self.events.subscribe();
+        let events = self.events.clone();
         let coordinator = coordinator.clone();
         let spawned = thread::Builder::new()
             .name("gpui-auto-update-sparkle".into())
             .spawn(move || {
                 while let Some(event) = stream.recv() {
+                    if let SparkleEvent::UpdateFound(update) = &event {
+                        adopt_discovery(&coordinator, update);
+                    }
+                    let had_session = events.pending_update().is_some();
                     if let Some(phase) = mapping::lifecycle_phase(&event) {
-                        apply_phase(&coordinator, &phase);
+                        apply_phase(&coordinator, &phase, had_session);
                     }
                 }
             });
@@ -141,8 +226,9 @@ impl SparkleBackend {
         engine.check_for_updates()?;
         let mut install_chosen = false;
         while let Some(event) = stream.recv() {
+            let had_session = self.events.pending_update().is_some();
             if let Some(phase) = mapping::lifecycle_phase(&event) {
-                apply_phase(coordinator, &phase);
+                apply_phase(coordinator, &phase, had_session);
                 match phase {
                     Phase::Staged
                     | Phase::Installing
@@ -322,12 +408,29 @@ impl std::fmt::Debug for SparklePreferences {
     }
 }
 
-fn apply_phase(coordinator: &UpdateCoordinator, phase: &Phase) {
-    for event in mapping::catch_up(&coordinator.state(), phase) {
+fn apply_phase(coordinator: &UpdateCoordinator, phase: &Phase, had_session: bool) {
+    for event in mapping::catch_up(&coordinator.state(), phase, had_session) {
         if let Err(error) = coordinator.apply(event.clone()) {
             tracing::debug!(?event, kind_of_error = ?error.kind(), "Sparkle step does not fit the update state");
             break;
         }
+    }
+}
+
+/// Routes an update Sparkle's scheduler found on its own through a
+/// background check so the available-update state is retained. The running
+/// session answers the check from `SparkleEvents::pending_update`, so no
+/// new Sparkle check and no Sparkle window is involved.
+fn adopt_discovery(coordinator: &UpdateCoordinator, update: &SparkleUpdate) {
+    if !mapping::should_adopt_discovery(&coordinator.state(), &coordinator.capability(), update) {
+        return;
+    }
+    match coordinator.check(CheckKind::Background) {
+        Ok(outcome) => tracing::debug!(?outcome, "adopted Sparkle's scheduled discovery"),
+        Err(error) => tracing::debug!(
+            kind_of_error = ?error.kind(),
+            "could not adopt Sparkle's scheduled discovery: {error}"
+        ),
     }
 }
 
