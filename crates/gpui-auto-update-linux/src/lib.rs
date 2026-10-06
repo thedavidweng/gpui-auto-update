@@ -20,11 +20,31 @@
 //! [`DetectionReason`], so the application can explain why updates are
 //! unavailable instead of hiding the updater. The marker contract is
 //! documented in `docs/linux-managed-install.md` in the repository.
+//!
+//! # Staging a release
+//!
+//! [`ReleaseStager::stage`] takes a verified
+//! [`StagedArtifact`](gpui_auto_update_core::download::StagedArtifact) (the
+//! only way to obtain one is a download whose signature verified) and
+//! extracts the release tarball into a private directory next to the managed
+//! install, never over it. Archive entries are validated strictly (no
+//! traversal, absolute paths, links, special files, duplicates, or other
+//! top-level roots, and bounded sizes and entry counts), the top-level
+//! directory must name the expected version and architecture, and the
+//! extracted layout must pass [`validate_layout`] before the
+//! [`StagedRelease`] is returned. The archive contract is documented in the
+//! same document.
+
+// The crate docs describe the Unix-only API; on other targets those items do
+// not exist, and docs.rs documents this crate for Linux.
+#![cfg_attr(not(unix), allow(rustdoc::broken_intra_doc_links))]
 
 #[cfg(target_os = "linux")]
 mod current;
 #[cfg(unix)]
 mod detect;
+#[cfg(unix)]
+mod extract;
 #[cfg(any(target_os = "linux", test))]
 mod proc_status;
 
@@ -35,4 +55,8 @@ pub use current::detect_current;
 pub use detect::{
     Detection, DetectionInputs, DetectionReason, MARKER_FILE_NAME, ManagedInstall, detect,
     marker_contents,
+};
+#[cfg(unix)]
+pub use extract::{
+    ArchiveLimits, LayoutError, ReleaseStager, StageError, StagedRelease, validate_layout,
 };

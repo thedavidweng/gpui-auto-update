@@ -44,6 +44,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and fails when a key pair does not match. Core marks a published insecure
   test key that release tooling refuses. See `docs/key-management.md`,
   which includes the key rotation procedure.
+- GPUI facade: the `Updater` entity with standard actions (`CheckForUpdates`,
+  `InstallUpdate`, `RestartToUpdate`, `DismissUpdate`), background execution
+  of all checks, preference saves, and backend calls, an `UpdateBackend`
+  install/handoff contract with GPUI restart, helper-owned quit, and
+  backend-owned relaunch, asynchronous prepare-to-install hooks, an install
+  busy guard, a debug-build install guard, deterministic preview states, and
+  per-platform default preference file locations.
+- Release automation with release-plz, gated on a fresh-consumer build of the
+  packaged crates on macOS, Windows, and Linux. Published crates include the
+  license texts and document platform backends on their own targets on
+  docs.rs.
 - CLI: `gpui-auto-update feed native` signs Windows and Linux artifacts into
   one native feed per OS and architecture, with immutable versioned https
   artifact URLs and validation by the updater's own parser; `feed sparkle`

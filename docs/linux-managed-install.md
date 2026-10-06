@@ -92,6 +92,84 @@ The writability probe creates and immediately removes
 same operation class as the rename-based swap, so it also catches read-only
 mounts.
 
+## Release archive
+
+A Linux release artifact is a gzip-compressed tar archive (`.tar.gz`)
+listed in the architecture's native feed (see `docs/feed-format.md`). It is
+signed like every other artifact; nothing in it is read until the core's
+downloader has verified the length and Ed25519 signature and returned a
+`StagedArtifact`.
+
+`gpui_auto_update_linux::ReleaseStager::stage` extracts it as follows:
+
+1. The verified file is reopened and must still be a regular file of the
+   verified length, otherwise staging fails with `ArtifactChanged`.
+2. A private (`0700`) directory
+   `<parent>/.<prefix-name>.gpui-auto-update-staged-<version>-<random>` is
+   created next to the prefix, on the same filesystem, so the helper can
+   swap with a rename. The running prefix is never written.
+3. The archive is streamed into that directory with the rules below. Any
+   violation stops extraction and removes the staging directory.
+4. The extracted prefix must pass `validate_layout` (the layout and marker
+   described above, with no symbolic links on those paths). Only then is a
+   `StagedRelease` returned, so a broken release is reported before the
+   application is asked to quit.
+
+### Archive rules
+
+The archive contains exactly one top-level directory, the *release root*:
+
+```text
+<app>-<version>-linux-<arch>/
+├── bin/<app>
+└── share/<app>/gpui-auto-update.managed
+```
+
+- `<version>` is the feed entry's `sparkle:version`, byte for byte (build
+  metadata included). Feed metadata is not signed, but the archive is, so
+  this name is what proves the archive is the release the feed offered. A
+  different valid version fails with `VersionMismatch` (for example an older
+  signed release relabeled as newer), and a version part that is not strict
+  SemVer fails with `InvalidVersionPath`.
+- `<arch>` is `x86_64` or `aarch64` and must match the installation;
+  otherwise staging fails with `ArchMismatch`.
+- Any other top-level name, or a top-level entry that is not a directory,
+  fails with `UnexpectedRoot`.
+
+Every entry must also satisfy:
+
+| Rule | Error |
+| --- | --- |
+| The path is non-empty UTF-8 without control characters and does not start with `./` | `UnsafePath` |
+| No `..` component | `PathTraversal` |
+| Not absolute | `AbsolutePath` |
+| The entry is a regular file or a directory (no symbolic or hard links) | `Link` |
+| No devices, FIFOs, sparse, contiguous, or unknown entry types | `SpecialFile` |
+| No two entries name the same path after removing empty and `.` components (`a//b`, `a/./b`, and `a/b/` all equal `a/b`) | `DuplicatePath` |
+| At most `max_entries` entries (default 100 000) | `TooManyEntries` |
+| The compressed archive is at most `max_compressed_bytes` (default 512 MiB, the core's artifact limit) | `ArchiveTooLarge` |
+| The declared entry sizes, and the whole decompressed tar stream including headers and long-name records, are at most `max_expanded_bytes` (default 1 GiB) | `ExpandedTooLarge` |
+| The gzip and tar data are well formed | `Malformed` |
+
+Parent directories need not be listed; they are created as needed. Ownership,
+timestamps, and extended attributes are not restored. Permissions are
+normalized: directories are `0755`, files with any execute bit are `0755`,
+and all other files are `0644`, so setuid, setgid, sticky, and group- or
+world-writable bits never reach the staged installation.
+
+All `StageError` values map to `ErrorKind::ArchiveValidation`, except
+`ArtifactChanged` and filesystem failures (`Io`), which map to
+`ErrorKind::Staging`.
+
+A release can be packaged with, for example:
+
+```sh
+tar -czf demo-1.5.0-linux-x86_64.tar.gz demo-1.5.0-linux-x86_64
+```
+
+Do not create the archive from inside the directory (`tar -czf … .`), which
+produces `./` entries and no release root.
+
 ## Recommended install location
 
 Install into a dedicated directory under the user's home, for example
