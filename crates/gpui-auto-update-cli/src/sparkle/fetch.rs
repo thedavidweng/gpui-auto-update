@@ -188,18 +188,12 @@ fn download(url: &str, max: u64) -> Result<Vec<u8>> {
         ..FetchPolicy::default()
     });
     eprintln!("downloading {url}");
-    // The body limit rejects a body whose length reaches it, so allow one
-    // extra byte and enforce the exact bound below.
-    let bytes = client.get_bytes(&parsed, max + 1).map_err(|e| match e {
+    client.get_bytes(&parsed, max).map_err(|e| match e {
         FetchError::TooLarge { .. } => {
             anyhow::anyhow!("{url} is larger than the expected {max} bytes")
         }
         e => anyhow::Error::new(e).context(format!("cannot download {url}")),
-    })?;
-    if bytes.len() as u64 > max {
-        bail!("{url} is larger than the expected {max} bytes");
-    }
-    Ok(bytes)
+    })
 }
 
 /// Relative path made only of normal components, or `None` if the path is
