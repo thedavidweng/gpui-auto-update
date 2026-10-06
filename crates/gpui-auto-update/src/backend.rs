@@ -68,6 +68,31 @@ pub trait UpdateBackend: Send + Sync + 'static {
         Ok(Handoff::Restart { restart_path: None })
     }
 
+    /// Reports, once, a failure that a previous update attempt left behind
+    /// after the application had quit, such as a rollback to this version.
+    ///
+    /// Called once while the updater starts, after [`Self::capability`] and
+    /// only for installations that are self-managed or temporarily unable to
+    /// update; the result is surfaced through
+    /// [`Updater::previous_update_failure`](crate::Updater::previous_update_failure).
+    /// Implementations should forget the failure once it has been returned.
+    /// Defaults to `None`.
+    fn take_previous_failure(&self) -> Option<UpdateError> {
+        None
+    }
+
+    /// Confirms that this freshly started version works: the application's
+    /// main window has opened.
+    ///
+    /// Called by [`Updater::main_window_opened`](crate::Updater::main_window_opened).
+    /// Backends whose installer keeps the previous version until the new one
+    /// proves it can start (the Linux helper) use it to keep the update
+    /// instead of rolling back. Must succeed, doing nothing, when the
+    /// application was not started by an update. Defaults to doing nothing.
+    fn confirm_startup(&self) -> Result<(), UpdateError> {
+        Ok(())
+    }
+
     /// The release channel checks currently select from; `None` is the
     /// default channel.
     fn channel(&self) -> Option<Channel> {
@@ -103,6 +128,12 @@ impl<T: UpdateBackend + ?Sized> UpdateBackend for Arc<T> {
     fn relaunch(&self) -> Result<Handoff, UpdateError> {
         (**self).relaunch()
     }
+    fn take_previous_failure(&self) -> Option<UpdateError> {
+        (**self).take_previous_failure()
+    }
+    fn confirm_startup(&self) -> Result<(), UpdateError> {
+        (**self).confirm_startup()
+    }
     fn channel(&self) -> Option<Channel> {
         (**self).channel()
     }
@@ -130,6 +161,12 @@ impl<T: UpdateBackend + ?Sized> UpdateBackend for Box<T> {
     }
     fn relaunch(&self) -> Result<Handoff, UpdateError> {
         (**self).relaunch()
+    }
+    fn take_previous_failure(&self) -> Option<UpdateError> {
+        (**self).take_previous_failure()
+    }
+    fn confirm_startup(&self) -> Result<(), UpdateError> {
+        (**self).confirm_startup()
     }
     fn channel(&self) -> Option<Channel> {
         (**self).channel()

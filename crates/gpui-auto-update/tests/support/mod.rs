@@ -103,6 +103,8 @@ pub enum BackendCall {
     Install(String),
     Relaunch,
     SetChannel(Option<String>),
+    TakePreviousFailure,
+    ConfirmStartup,
 }
 
 /// An install backend with scripted results that records each call.
@@ -119,6 +121,8 @@ struct BackendState {
     handoff: Result<Handoff, UpdateError>,
     channel: Option<String>,
     reporting: Reporting,
+    previous_failure: Option<UpdateError>,
+    confirm_result: Result<(), UpdateError>,
     calls: Vec<(BackendCall, bool)>,
 }
 
@@ -139,6 +143,8 @@ impl FakeBackend {
                 handoff: Ok(Handoff::Restart { restart_path: None }),
                 channel: None,
                 reporting: Reporting::Sink,
+                previous_failure: None,
+                confirm_result: Ok(()),
                 calls: Vec::new(),
             })),
             executor: cx.executor(),
@@ -179,6 +185,17 @@ impl FakeBackend {
         self
     }
 
+    /// What the backend reports about the previous update attempt.
+    pub fn with_previous_failure(self, error: UpdateError) -> Self {
+        self.inner.lock().unwrap().previous_failure = Some(error);
+        self
+    }
+
+    pub fn with_confirm_result(self, result: Result<(), UpdateError>) -> Self {
+        self.inner.lock().unwrap().confirm_result = result;
+        self
+    }
+
     pub fn with_channel(self, channel: Option<&str>) -> Self {
         self.inner.lock().unwrap().channel = channel.map(str::to_owned);
         self
@@ -194,11 +211,16 @@ impl FakeBackend {
             .collect()
     }
 
-    /// Calls other than the capability and channel queries made at startup.
+    /// Calls other than the queries made at startup.
     pub fn operations(&self) -> Vec<BackendCall> {
         self.calls()
             .into_iter()
-            .filter(|call| !matches!(call, BackendCall::Capability))
+            .filter(|call| {
+                !matches!(
+                    call,
+                    BackendCall::Capability | BackendCall::TakePreviousFailure
+                )
+            })
             .collect()
     }
 
@@ -264,6 +286,18 @@ impl UpdateBackend for FakeBackend {
     fn relaunch(&self) -> Result<Handoff, UpdateError> {
         drop(self.record(BackendCall::Relaunch));
         Ok(Handoff::Restart { restart_path: None })
+    }
+
+    fn take_previous_failure(&self) -> Option<UpdateError> {
+        self.record(BackendCall::TakePreviousFailure)
+            .previous_failure
+            .take()
+    }
+
+    fn confirm_startup(&self) -> Result<(), UpdateError> {
+        self.record(BackendCall::ConfirmStartup)
+            .confirm_result
+            .clone()
     }
 
     fn channel(&self) -> Option<gpui_auto_update::core::Channel> {

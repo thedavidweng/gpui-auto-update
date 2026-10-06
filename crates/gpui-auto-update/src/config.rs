@@ -165,7 +165,7 @@ impl std::fmt::Debug for UpdaterConfig {
 
 /// A check source that never finds an update; used by preview
 /// configurations.
-struct NoUpdates;
+pub(crate) struct NoUpdates;
 
 impl CheckSource for NoUpdates {
     fn check(&self, _: &CheckRequest) -> Result<CheckOutcome, UpdateError> {
