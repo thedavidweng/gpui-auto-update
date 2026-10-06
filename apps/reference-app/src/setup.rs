@@ -2,13 +2,13 @@
 
 use std::borrow::Cow;
 
-use gpui_auto_update::UpdaterConfig;
 use gpui_auto_update::core::check::{FeedCheckSource, UpdateChecker};
 use gpui_auto_update::core::feed::{Arch, Os, UpdateTarget};
 use gpui_auto_update::core::fetch::{FetchPolicy, HttpClient};
 use gpui_auto_update::core::{
     Capability, CheckOutcome, CheckPolicy, CheckRequest, CheckSource, ErrorKind, UpdateError,
 };
+use gpui_auto_update::{NativeFeed, UpdaterConfig};
 
 use crate::build_config::{BuildConfig, BuildConfigError, DEFAULT_APP_ID};
 
@@ -16,7 +16,9 @@ use crate::build_config::{BuildConfig, BuildConfigError, DEFAULT_APP_ID};
 ///
 /// A build without a usable feed still gets an updater, whose checks fail
 /// with a configuration error, so the error state is reachable without a
-/// server. The install backend is the facade's default.
+/// server. A build with a feed installs with the platform's default
+/// native-feed backend ([`UpdaterConfig::native_feed`]); on Linux that is the
+/// managed-install backend.
 pub fn updater_config(build: &Result<BuildConfig, BuildConfigError>) -> UpdaterConfig {
     let build = match build {
         Ok(build) => build,
@@ -28,8 +30,11 @@ pub fn updater_config(build: &Result<BuildConfig, BuildConfigError>) -> UpdaterC
         }
     };
 
-    let mut config = UpdaterConfig::new(build.app_id.clone(), check_source(build))
-        .allow_debug_self_update(build.allow_debug_self_update);
+    let config = match native_feed(build) {
+        Some(feed) => UpdaterConfig::native_feed(build.app_id.clone(), feed),
+        None => UpdaterConfig::new(build.app_id.clone(), check_source(build)),
+    };
+    let mut config = config.allow_debug_self_update(build.allow_debug_self_update);
     if let Some(manager) = &build.externally_managed {
         config = config.with_capability(Capability::ExternallyManaged {
             manager: Some(manager.clone()),
@@ -43,6 +48,24 @@ pub fn updater_config(build: &Result<BuildConfig, BuildConfigError>) -> UpdaterC
         );
     }
     config
+}
+
+/// The native feed of a build that has one, on a platform with native feeds.
+fn native_feed(build: &BuildConfig) -> Option<NativeFeed> {
+    let feed = build.feed.as_ref()?;
+    Os::current()?;
+    Arch::current()?;
+    let policy = FetchPolicy {
+        allow_insecure_http: feed.allow_insecure_http,
+        ..FetchPolicy::default()
+    };
+    NativeFeed::new(
+        feed.url.as_str(),
+        feed.public_key.clone(),
+        build.version.clone(),
+    )
+    .ok()
+    .map(|native| native.with_fetch_policy(policy))
 }
 
 fn check_source(build: &BuildConfig) -> Box<dyn CheckSource> {

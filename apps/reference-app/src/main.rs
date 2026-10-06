@@ -14,6 +14,7 @@
 mod build_config;
 mod document;
 mod setup;
+mod unattended;
 mod update_ui;
 
 use std::path::PathBuf;
@@ -27,6 +28,7 @@ use gpui_auto_update::CheckForUpdates;
 
 use build_config::{BuildConfig, BuildConfigError, DEFAULT_APP_ID, DEFAULT_VERSION};
 use document::Document;
+use unattended::Unattended;
 use update_ui::UpdatePanel;
 
 actions!(reference_app, [Quit]);
@@ -107,6 +109,9 @@ fn document_path(app_id: &str) -> PathBuf {
 }
 
 fn main() {
+    // On Linux, an update is finished by this executable started as the
+    // update helper; that must happen before anything else.
+    gpui_auto_update::run_update_helper_if_requested();
     let build: Result<BuildConfig, BuildConfigError> = BuildConfig::compiled();
     let version = build
         .as_ref()
@@ -119,6 +124,19 @@ fn main() {
     if let Err(error) = &build {
         eprintln!("reference-app: {error}");
     }
+    if let Ok(build) = &build
+        && build.e2e_fail_to_start
+    {
+        if let Some(report) = &build.e2e_report {
+            unattended::record_failed_start(report, &version);
+        }
+        eprintln!("reference-app: this build is deliberately broken and does not start");
+        std::process::exit(1);
+    }
+    let e2e_report = build
+        .as_ref()
+        .ok()
+        .and_then(|build| build.e2e_report.clone());
     let app_id = build
         .as_ref()
         .map(|build| build.app_id.clone())
@@ -126,6 +144,10 @@ fn main() {
 
     Application::new().run(move |cx: &mut App| {
         let updater = gpui_auto_update::init(setup::updater_config(&build), cx);
+        if let Some(report) = &e2e_report {
+            let unattended = Unattended::start(&updater, report, &version, cx);
+            cx.set_global(unattended);
+        }
 
         cx.on_action(|_: &Quit, cx| cx.quit());
         cx.set_menus(vec![Menu {
@@ -150,7 +172,9 @@ fn main() {
                     Root {
                         title: format!("Reference App {version}"),
                         config_error,
-                        panel: cx.new(|cx| UpdatePanel::new(updater.clone(), version, window, cx)),
+                        panel: cx.new(|cx| {
+                            UpdatePanel::new(updater.clone(), version.clone(), window, cx)
+                        }),
                         _document: cx.observe(&document, |_, _, cx| cx.notify()),
                         _save_before_install: document::save_before_install(
                             &updater, &document, cx,
@@ -162,5 +186,8 @@ fn main() {
         )
         .expect("failed to open the main window");
         cx.activate(true);
+        // The health signal: after an update, the helper keeps the previous
+        // version until this arrives and restores it if this one exits first.
+        updater.update(cx, |updater, cx| updater.main_window_opened(cx));
     });
 }

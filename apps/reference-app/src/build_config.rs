@@ -14,10 +14,13 @@
 //! | `REFERENCE_APP_ALLOW_DEBUG_SELF_UPDATE` | Let a debug build install updates | `false` |
 //! | `REFERENCE_APP_EXTERNALLY_MANAGED` | Package manager name; marks the install externally managed | none |
 //! | `REFERENCE_APP_CHECK_INTERVAL_SECS` | Periodic automatic check interval | the library default |
+//! | `REFERENCE_APP_E2E_REPORT` | Absolute path; run unattended and append what happens to it (see `unattended`) | none |
+//! | `REFERENCE_APP_E2E_FAIL_TO_START` | Exit with an error before the main window opens, as a broken release | `false` |
 //!
 //! Empty values count as unset. Nothing is read at run time.
 
 use std::net::IpAddr;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui_auto_update::core::trust::TrustedKey;
@@ -41,6 +44,8 @@ pub struct BuildInputs<'a> {
     pub allow_debug_self_update: Option<&'a str>,
     pub externally_managed: Option<&'a str>,
     pub check_interval_secs: Option<&'a str>,
+    pub e2e_report: Option<&'a str>,
+    pub e2e_fail_to_start: Option<&'a str>,
 }
 
 impl BuildInputs<'static> {
@@ -55,6 +60,8 @@ impl BuildInputs<'static> {
             allow_debug_self_update: option_env!("REFERENCE_APP_ALLOW_DEBUG_SELF_UPDATE"),
             externally_managed: option_env!("REFERENCE_APP_EXTERNALLY_MANAGED"),
             check_interval_secs: option_env!("REFERENCE_APP_CHECK_INTERVAL_SECS"),
+            e2e_report: option_env!("REFERENCE_APP_E2E_REPORT"),
+            e2e_fail_to_start: option_env!("REFERENCE_APP_E2E_FAIL_TO_START"),
         }
     }
 }
@@ -70,6 +77,11 @@ pub struct BuildConfig {
     /// externally managed.
     pub externally_managed: Option<String>,
     pub check_interval: Option<Duration>,
+    /// Where an unattended end-to-end build reports what happens.
+    pub e2e_report: Option<PathBuf>,
+    /// Whether this build is a broken release that exits before its main
+    /// window opens.
+    pub e2e_fail_to_start: bool,
 }
 
 /// Where updates come from and who must have signed them.
@@ -99,6 +111,8 @@ pub enum BuildConfigError {
     Flag { name: &'static str, value: String },
     #[error("REFERENCE_APP_CHECK_INTERVAL_SECS must be a positive number of seconds, not {0:?}")]
     CheckInterval(String),
+    #[error("REFERENCE_APP_E2E_REPORT must be an absolute path, not {0:?}")]
+    E2eReport(String),
 }
 
 impl BuildConfig {
@@ -129,6 +143,17 @@ impl BuildConfig {
                 _ => Err(BuildConfigError::CheckInterval(text.to_owned())),
             })
             .transpose()?;
+        let e2e_report = set(inputs.e2e_report)
+            .map(|text| {
+                let path = PathBuf::from(text);
+                if path.is_absolute() {
+                    Ok(path)
+                } else {
+                    Err(BuildConfigError::E2eReport(text.to_owned()))
+                }
+            })
+            .transpose()?;
+        let e2e_fail_to_start = flag("REFERENCE_APP_E2E_FAIL_TO_START", inputs.e2e_fail_to_start)?;
         Ok(Self {
             app_id: set(inputs.app_id).unwrap_or(DEFAULT_APP_ID).to_owned(),
             version,
@@ -136,6 +161,8 @@ impl BuildConfig {
             allow_debug_self_update,
             externally_managed: set(inputs.externally_managed).map(str::to_owned),
             check_interval,
+            e2e_report,
+            e2e_fail_to_start,
         })
     }
 }
@@ -243,6 +270,37 @@ mod tests {
         assert!(config.allow_debug_self_update);
         assert_eq!(config.externally_managed.as_deref(), Some("Homebrew"));
         assert_eq!(config.check_interval, Some(Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn end_to_end_builds_run_unattended_and_can_be_broken() {
+        let inputs = BuildInputs {
+            e2e_report: Some("/tmp/e2e/report.log"),
+            e2e_fail_to_start: Some("yes"),
+            ..BuildInputs::default()
+        };
+        let config = BuildConfig::from_inputs(&inputs).unwrap();
+        assert_eq!(
+            config.e2e_report.as_deref(),
+            Some(std::path::Path::new("/tmp/e2e/report.log"))
+        );
+        assert!(config.e2e_fail_to_start);
+
+        let plain = BuildConfig::from_inputs(&BuildInputs::default()).unwrap();
+        assert_eq!(plain.e2e_report, None);
+        assert!(!plain.e2e_fail_to_start);
+    }
+
+    #[test]
+    fn a_relative_end_to_end_report_path_is_rejected() {
+        let inputs = BuildInputs {
+            e2e_report: Some("report.log"),
+            ..BuildInputs::default()
+        };
+        assert!(matches!(
+            BuildConfig::from_inputs(&inputs),
+            Err(BuildConfigError::E2eReport(_))
+        ));
     }
 
     #[test]

@@ -28,6 +28,27 @@ cargo build -p gpui-auto-update-reference-app --release
 | `REFERENCE_APP_ALLOW_DEBUG_SELF_UPDATE` | Let a debug build install updates | `false` |
 | `REFERENCE_APP_EXTERNALLY_MANAGED` | Package manager name; marks the install externally managed | none |
 | `REFERENCE_APP_CHECK_INTERVAL_SECS` | Periodic automatic check interval | library default |
+| `REFERENCE_APP_E2E_REPORT` | Absolute path; run unattended and append what happens to it | none |
+| `REFERENCE_APP_E2E_FAIL_TO_START` | Exit with an error before the main window opens, as a broken release | `false` |
 
 `reference-app --version` prints the compiled version and exits, so tests can
 tell which build is running.
+
+## Unattended end-to-end mode
+
+A build with `REFERENCE_APP_E2E_REPORT` checks for updates as soon as the
+updater is ready and installs whatever is offered without a click, and
+appends one line per fact to the report (`started <version>`,
+`update-available <version>`, `handoff`, `up-to-date`,
+`previous-update-failure <kind>: <message>`, `error <kind>: <message>`,
+`failed-to-start <version>`). After a failed update it reports the failure
+and installs nothing. The full list is in `src/unattended.rs`.
+
+On Linux, `tools/e2e/linux-update.sh` uses this mode to update a managed
+install from 1.0.0 to 1.1.0 and then to roll back a broken 1.2.0 built with
+`REFERENCE_APP_E2E_FAIL_TO_START`. CI runs it under `xvfb-run` with Mesa's
+software Vulkan driver:
+
+```sh
+xvfb-run -a tools/e2e/linux-update.sh
+```
