@@ -2442,7 +2442,10 @@ dependencies = [
 name = "gpui-auto-update-macos"
 version = "0.0.0"
 dependencies = [
+ "dispatch2",
  "gpui-auto-update-core",
+ "sparkle-updater",
+ "tracing",
 ]
 
 [[package]]
@@ -3886,6 +3889,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3e0adef53c21f888deb4fa59fc59f7eb17404926ee8a6f59f5df0fd7f9f3272"
 dependencies = [
  "bitflags 2.13.2",
+ "block2",
+ "libc",
  "objc2",
  "objc2-core-foundation",
 ]
@@ -5412,6 +5417,22 @@ checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "sparkle-updater"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6d60731c5488e4f3230adcb49041f8f03a49fd546765c896290e07fa3baf949"
+dependencies = [
+ "block2",
+ "log",
+ "objc2",
+ "objc2-foundation",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "url",
 ]
 
 [[package]]

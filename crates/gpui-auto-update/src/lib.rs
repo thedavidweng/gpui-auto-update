@@ -38,6 +38,24 @@
 //! - [`PreviewState`] provides deterministic, clearly marked states for
 //!   building update UI without a real update.
 //!
+//! # macOS: Sparkle
+//!
+//! On macOS, updates are performed by Sparkle 2 through the
+//! `gpui-auto-update-macos` backend, re-exported as `macos`. With the
+//! `sparkle` feature, `UpdaterConfig::sparkle(app_id)` starts Sparkle for
+//! the running application bundle and selects it as the check source,
+//! preference store, and backend. Manual checks then use Sparkle's standard
+//! update UI, the automatic-update preference stays in Sparkle and is only
+//! mirrored, and Sparkle installs and relaunches the application
+//! ([`Handoff::BackendOwned`]). `UpdaterConfig::for_sparkle` does the same
+//! with a backend you created yourself.
+//!
+//! The feature is opt-in because it links `Sparkle.framework`: building
+//! requires `SPARKLE_FRAMEWORK_PATH` to point at the directory containing
+//! it, and the application bundle must embed it in `Contents/Frameworks`
+//! with an `@executable_path/../Frameworks` run-path (see
+//! `docs/sparkle-packaging.md` in the repository).
+//!
 //! # Debug builds
 //!
 //! Debug builds check for updates but never install them unless
@@ -52,9 +70,14 @@ mod backend;
 mod config;
 mod paths;
 mod preview;
+#[cfg(target_os = "macos")]
+mod sparkle;
 mod updater;
 
 pub use gpui_auto_update_core as core;
+/// The Sparkle 2 backend used on macOS.
+#[cfg(target_os = "macos")]
+pub use gpui_auto_update_macos as macos;
 
 pub use backend::{Handoff, ProgressSink, UnsupportedBackend, UpdateBackend};
 pub use config::{BuildProfile, UpdaterConfig};

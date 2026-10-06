@@ -12,6 +12,12 @@ readme = "README.md"
 keywords = ["gpui", "auto-update", "updater", "sparkle", "desktop"]
 categories = ["gui", "os"]
 
+[features]
+# Starts and links the real Sparkle 2 framework on macOS
+# (`UpdaterConfig::sparkle`). Building with it requires SPARKLE_FRAMEWORK_PATH;
+# see docs/adr/0002-sparkle-binding.md.
+sparkle = ["gpui-auto-update-macos/sparkle"]
+
 [dependencies]
 gpui.workspace = true
 gpui-auto-update-core.workspace = true

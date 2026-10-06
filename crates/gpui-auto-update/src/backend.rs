@@ -26,6 +26,16 @@ pub trait UpdateBackend: Send + Sync + 'static {
     /// [`UpdaterConfig::with_capability`](crate::UpdaterConfig::with_capability).
     fn capability(&self) -> Capability;
 
+    /// Gives the backend the coordinator that owns the update state, once,
+    /// while the updater starts and before [`Self::capability`] is asked.
+    ///
+    /// Backends whose native engine changes the state outside the calls of
+    /// this trait (Sparkle downloads and installs from its own windows)
+    /// keep it to report those changes. Defaults to doing nothing.
+    fn attach(&self, coordinator: &UpdateCoordinator) {
+        let _ = coordinator;
+    }
+
     /// Downloads, verifies, and stages `update` so it can be installed
     /// without further network access.
     ///
@@ -77,6 +87,9 @@ impl<T: UpdateBackend + ?Sized> UpdateBackend for Arc<T> {
     fn capability(&self) -> Capability {
         (**self).capability()
     }
+    fn attach(&self, coordinator: &UpdateCoordinator) {
+        (**self).attach(coordinator)
+    }
     fn stage(&self, update: &AvailableUpdate, progress: &ProgressSink) -> Result<(), UpdateError> {
         (**self).stage(update, progress)
     }
@@ -101,6 +114,9 @@ impl<T: UpdateBackend + ?Sized> UpdateBackend for Arc<T> {
 impl<T: UpdateBackend + ?Sized> UpdateBackend for Box<T> {
     fn capability(&self) -> Capability {
         (**self).capability()
+    }
+    fn attach(&self, coordinator: &UpdateCoordinator) {
+        (**self).attach(coordinator)
     }
     fn stage(&self, update: &AvailableUpdate, progress: &ProgressSink) -> Result<(), UpdateError> {
         (**self).stage(update, progress)
