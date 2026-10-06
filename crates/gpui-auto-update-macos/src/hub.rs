@@ -39,6 +39,7 @@ impl SparkleEvents {
             SparkleEvent::UpdateFound(update) => hub.pending = Some(update.clone()),
             SparkleEvent::NoUpdateFound(_)
             | SparkleEvent::WillRelaunch
+            | SparkleEvent::SessionWillFinish
             | SparkleEvent::UserChoice {
                 choice: UserChoice::Skip,
                 ..

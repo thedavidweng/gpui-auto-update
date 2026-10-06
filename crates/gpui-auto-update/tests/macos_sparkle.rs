@@ -5,15 +5,16 @@
 
 mod support;
 
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 
 use gpui::TestAppContext;
 use gpui_auto_update::core::{
-    AvailableUpdate, CheckKind, CheckOutcome, PreferenceOwner, UpdateError, UpdateState,
+    AvailableUpdate, CheckKind, CheckOutcome, ErrorKind, PreferenceOwner, UpdateError, UpdateState,
 };
 use gpui_auto_update::macos::{
-    SparkleBackend, SparkleEngine, SparkleEvent, SparkleEvents, SparkleUpdate,
+    RelaunchContinuation, SparkleBackend, SparkleEngine, SparkleEvent, SparkleEvents, SparkleUpdate,
 };
 use gpui_auto_update::{BuildProfile, Handoff, UpdaterConfig, UpdaterEvent};
 
@@ -38,6 +39,7 @@ struct Script {
     calls: Vec<Call>,
     replies: Vec<Vec<SparkleEvent>>,
     automatic: bool,
+    session_in_progress: bool,
 }
 
 impl ScriptedSparkle {
@@ -48,8 +50,14 @@ impl ScriptedSparkle {
                 calls: Vec::new(),
                 replies: Vec::new(),
                 automatic,
+                session_in_progress: false,
             })),
         }
+    }
+
+    /// Whether Sparkle reports an update session as running.
+    fn set_session_in_progress(&self, in_progress: bool) {
+        self.state.lock().unwrap().session_in_progress = in_progress;
     }
 
     fn reply(&self, events: Vec<SparkleEvent>) -> &Self {
@@ -86,7 +94,7 @@ impl SparkleEngine for ScriptedSparkle {
         self.run(Call::Background)
     }
     fn session_in_progress(&self) -> Result<bool, UpdateError> {
-        Ok(false)
+        Ok(self.state.lock().unwrap().session_in_progress)
     }
     fn automatically_checks_for_updates(&self) -> Result<bool, UpdateError> {
         Ok(self.state.lock().unwrap().automatic)
@@ -197,5 +205,134 @@ fn installing_goes_through_sparkle_which_owns_the_relaunch(cx: &mut TestAppConte
         recorder
             .events()
             .contains(&UpdaterEvent::Handoff(Handoff::BackendOwned))
+    );
+}
+
+/// Pumps the executors until `condition` holds, while background threads
+/// (the backend's tracker and gate) deliver their messages.
+fn wait_until(cx: &mut TestAppContext, mut condition: impl FnMut(&mut TestAppContext) -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        cx.run_until_parked();
+        if condition(cx) {
+            return;
+        }
+        assert!(Instant::now() < deadline, "condition never held");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[gpui::test]
+fn a_scheduled_discovery_surfaces_as_available_without_touching_sparkles_ui(
+    cx: &mut TestAppContext,
+) {
+    let (backend, engine) = sparkle(true);
+    let updater = cx.update(|cx| gpui_auto_update::init(config(backend.clone()), cx));
+    cx.run_until_parked();
+    let recorder = Recorder::new(&updater, cx);
+    // Sparkle's scheduler found an update outside any facade check and is
+    // holding the session open as a gentle reminder, with its window
+    // suppressed.
+    engine.set_session_in_progress(true);
+
+    backend
+        .events()
+        .publish(SparkleEvent::UpdateFound(SparkleUpdate::new("3.0")));
+
+    wait_until(cx, |cx| {
+        state(&updater, cx) == UpdateState::Available(AvailableUpdate::new("3.0"))
+    });
+    assert_eq!(
+        state(&updater, cx),
+        UpdateState::Available(AvailableUpdate::new("3.0"))
+    );
+    assert_eq!(
+        engine.calls(),
+        Vec::<Call>::new(),
+        "the discovery is adopted without a new Sparkle check or window"
+    );
+    assert!(recorder.events().contains(&UpdaterEvent::StateChanged));
+}
+
+#[gpui::test]
+fn sparkles_relaunch_waits_for_the_prepare_hooks(cx: &mut TestAppContext) {
+    let (backend, _engine) = sparkle(true);
+    let updater = cx.update(|cx| gpui_auto_update::init(config(backend.clone()), cx));
+    cx.run_until_parked();
+
+    let hook_started = Arc::new(AtomicBool::new(false));
+    let (release_tx, release_rx) = futures::channel::oneshot::channel::<()>();
+    let release_rx = Arc::new(Mutex::new(Some(release_rx)));
+    let _hook = {
+        let hook_started = hook_started.clone();
+        let release_rx = release_rx.clone();
+        updater.update(cx, |u, _| {
+            u.on_prepare_to_install(move |cx| {
+                hook_started.store(true, Ordering::SeqCst);
+                let release_rx = release_rx
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .expect("the hook runs once");
+                cx.background_executor().spawn(async move {
+                    release_rx
+                        .await
+                        .map_err(|canceled| Box::new(canceled) as gpui_auto_update::PrepareError)
+                })
+            })
+        })
+    };
+
+    let resumes = Arc::new(AtomicUsize::new(0));
+    let counting = resumes.clone();
+    backend.events().publish(SparkleEvent::RelaunchRequested {
+        update: SparkleUpdate::new("2.0"),
+        continuation: RelaunchContinuation::from_fn(move || {
+            counting.fetch_add(1, Ordering::SeqCst);
+        }),
+    });
+
+    let started = hook_started.clone();
+    wait_until(cx, move |_| started.load(Ordering::SeqCst));
+    assert_eq!(
+        resumes.load(Ordering::SeqCst),
+        0,
+        "the relaunch stays postponed while the hook saves"
+    );
+
+    release_tx.send(()).unwrap();
+    let counting = resumes.clone();
+    wait_until(cx, move |_| counting.load(Ordering::SeqCst) == 1);
+}
+
+#[gpui::test]
+fn a_failing_prepare_hook_leaves_sparkles_relaunch_postponed(cx: &mut TestAppContext) {
+    let (backend, _engine) = sparkle(true);
+    let updater = cx.update(|cx| gpui_auto_update::init(config(backend.clone()), cx));
+    cx.run_until_parked();
+    let recorder = Recorder::new(&updater, cx);
+    let _hook = updater.update(cx, |u, _| {
+        u.on_prepare_to_install(|_| gpui::Task::ready(Err("disk full".into())))
+    });
+
+    let resumes = Arc::new(AtomicUsize::new(0));
+    let counting = resumes.clone();
+    backend.events().publish(SparkleEvent::RelaunchRequested {
+        update: SparkleUpdate::new("2.0"),
+        continuation: RelaunchContinuation::from_fn(move || {
+            counting.fetch_add(1, Ordering::SeqCst);
+        }),
+    });
+
+    let failed = recorder.events.clone();
+    wait_until(cx, move |_| {
+        failed.lock().unwrap().iter().any(|event| {
+            matches!(event, UpdaterEvent::Failed(error) if error.kind() == ErrorKind::QuitCoordination)
+        })
+    });
+    assert_eq!(
+        resumes.load(Ordering::SeqCst),
+        0,
+        "a failed hook never resumes the relaunch"
     );
 }

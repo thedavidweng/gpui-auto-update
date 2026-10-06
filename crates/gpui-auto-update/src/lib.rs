@@ -111,7 +111,9 @@ pub use gpui_auto_update_macos as macos;
 #[cfg(windows)]
 pub use gpui_auto_update_windows as windows;
 
-pub use backend::{Handoff, ProgressSink, UnsupportedBackend, UpdateBackend};
+pub use backend::{
+    Handoff, HandoffGate, PostponedHandoff, ProgressSink, UnsupportedBackend, UpdateBackend,
+};
 pub use config::{BuildProfile, UpdaterConfig};
 pub use native::NativeFeed;
 pub use paths::default_preferences_path;

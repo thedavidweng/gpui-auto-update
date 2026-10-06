@@ -4,10 +4,17 @@
 use gpui_auto_update_core::{
     AvailableUpdate, Capability, Channel, CheckPolicy, UpdateCoordinator, UpdateError,
 };
-use gpui_auto_update_macos::SparkleBackend;
+use gpui_auto_update_macos::{RelaunchContinuation, SparkleBackend};
 
-use crate::backend::{Handoff, ProgressSink, UpdateBackend};
+use crate::backend::{Handoff, HandoffGate, PostponedHandoff, ProgressSink, UpdateBackend};
 use crate::config::UpdaterConfig;
+
+/// Sparkle's postponed relaunch resumes through the facade's gate.
+impl PostponedHandoff for RelaunchContinuation {
+    fn resume(self: Box<Self>) {
+        (*self).resume();
+    }
+}
 
 /// Sparkle installs and relaunches the application itself, so every
 /// handoff is [`Handoff::BackendOwned`].
@@ -32,6 +39,12 @@ impl UpdateBackend for SparkleBackend {
     fn relaunch(&self) -> Result<Handoff, UpdateError> {
         SparkleBackend::relaunch(self)?;
         Ok(Handoff::BackendOwned)
+    }
+
+    fn set_handoff_gate(&self, gate: HandoffGate) {
+        SparkleBackend::set_handoff_gate(self, move |continuation| {
+            gate(Box::new(continuation));
+        });
     }
 
     fn channel(&self) -> Option<Channel> {
@@ -70,6 +83,11 @@ impl UpdaterConfig {
     /// `Application::run`. Outside an application bundle the updater
     /// reports an unsupported installation. Fails when Sparkle cannot start,
     /// for example because `SUFeedURL` is missing from `Info.plist`.
+    ///
+    /// Sparkle's scheduled discoveries never open a Sparkle window. To
+    /// override when Sparkle may present, start the backend with
+    /// [`gpui_auto_update_macos::SparkleBackend::start_with_policy`] and
+    /// pass it to [`Self::for_sparkle`].
     ///
     /// Available with the `sparkle` feature, which links
     /// `Sparkle.framework`; see the crate documentation.
