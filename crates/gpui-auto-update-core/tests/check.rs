@@ -300,6 +300,52 @@ fn streamed_download_reports_length_and_stops_at_the_limit() {
 }
 
 #[test]
+fn body_of_exactly_the_limit_is_accepted() {
+    let sized = serve(|rq| rq.respond(bytes(vec![3u8; 1024])).unwrap());
+    let chunked = serve(|rq| {
+        let body = std::io::Cursor::new(vec![3u8; 1024]);
+        let response = tiny_http::Response::new(200.into(), vec![], body, None, None)
+            .with_chunked_threshold(0);
+        rq.respond(response).unwrap();
+    });
+    let client = HttpClient::new(test_policy());
+    for base in [&sized, &chunked] {
+        assert_eq!(client.get_bytes(base, 1024).unwrap().len(), 1024);
+        let mut body = Vec::new();
+        client
+            .open(base, 1024)
+            .unwrap()
+            .read_to_end(&mut body)
+            .unwrap();
+        assert_eq!(body.len(), 1024);
+    }
+}
+
+#[test]
+fn chunked_body_one_byte_over_the_limit_is_rejected() {
+    let base = serve(|rq| {
+        let body = std::io::Cursor::new(vec![3u8; 1025]);
+        let response = tiny_http::Response::new(200.into(), vec![], body, None, None)
+            .with_chunked_threshold(0);
+        rq.respond(response).unwrap();
+    });
+    let client = HttpClient::new(test_policy());
+    let err = client.get_bytes(&base, 1024).unwrap_err();
+    assert!(
+        matches!(err, FetchError::TooLarge { limit: 1024 }),
+        "{err:?}"
+    );
+    let mut body = Vec::new();
+    let err = client
+        .open(&base, 1024)
+        .unwrap()
+        .read_to_end(&mut body)
+        .unwrap_err();
+    assert!(body.len() <= 1024);
+    assert!(err.to_string().contains("1024"), "{err}");
+}
+
+#[test]
 fn streamed_chunked_download_is_cut_off_at_the_limit() {
     let base = serve(|rq| {
         let body = std::io::Cursor::new(vec![1u8; 10_000]);

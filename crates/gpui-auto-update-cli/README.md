@@ -2,7 +2,7 @@
 
 Release and integration tooling for [gpui-auto-update](https://crates.io/crates/gpui-auto-update): project initialization, doctor checks, signing keys, feed generation, and release verification. Installs the `gpui-auto-update` binary; not needed at application runtime.
 
-> Pre-release: the `sparkle`, `keys`, and `feed` commands are implemented so far. See the
+> Pre-release: the `sparkle`, `keys`, `feed`, and `verify` commands are implemented so far. See the
 > [project README](https://github.com/thedavidweng/gpui-auto-update) for
 > status.
 
@@ -37,5 +37,17 @@ gpui-auto-update feed sparkle --sparkle build/sparkle --archives dist/macos \
 
 See [docs/feed-generation.md](https://github.com/thedavidweng/gpui-auto-update/blob/main/docs/feed-generation.md),
 including key-rotation bridge releases.
+
+## Verifying a published feed
+
+```sh
+gpui-auto-update verify --feed https://downloads.example.com/appcast-linux-x86_64.xml \
+  --public-key "$APP_PUBLIC_ED_KEY" --os linux --arch x86_64 --expect-version 1.5.0
+```
+
+Audits a native feed or Sparkle appcast and every enclosure it lists:
+signatures, artifact existence, content lengths, platform coverage, and
+immutable versioned naming, without installing anything. See
+[docs/verification.md](https://github.com/thedavidweng/gpui-auto-update/blob/main/docs/verification.md).
 
 Licensed under either of MIT or Apache-2.0 at your option.

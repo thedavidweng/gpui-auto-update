@@ -85,6 +85,8 @@ pub struct Download {
     reader: ureq::BodyReader<'static>,
     content_length: Option<u64>,
     url: Url,
+    limit: u64,
+    remaining: u64,
 }
 
 impl Download {
@@ -101,7 +103,18 @@ impl Download {
 
 impl Read for Download {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.reader.read(buf)
+        // Reading at most one byte past the limit tells a body of exactly
+        // `limit` bytes (followed by end of stream) from a longer one.
+        let max = usize::try_from(self.remaining.saturating_add(1))
+            .unwrap_or(usize::MAX)
+            .min(buf.len());
+        let n = self.reader.read(&mut buf[..max])?;
+        if n as u64 > self.remaining {
+            self.remaining = 0;
+            return Err(ureq::Error::BodyExceedsLimit(self.limit).into_io());
+        }
+        self.remaining -= n as u64;
+        Ok(n)
     }
 }
 
@@ -141,27 +154,35 @@ impl HttpClient {
         &self.policy
     }
 
-    /// Fetches a whole body of at most `max_bytes` bytes.
+    /// Fetches a whole body of at most `max_bytes` bytes. A body of exactly
+    /// `max_bytes` bytes is accepted.
     pub fn get_bytes(&self, url: &Url, max_bytes: u64) -> Result<Vec<u8>, FetchError> {
-        let (mut response, _) = self.send(url, max_bytes)?;
-        response
-            .body_mut()
-            .with_config()
-            .limit(max_bytes)
-            .read_to_vec()
-            .map_err(|e| map_error(e, max_bytes))
+        let mut body = Vec::new();
+        self.open(url, max_bytes)?
+            .read_to_end(&mut body)
+            .map_err(|e| read_error(e, max_bytes))?;
+        Ok(body)
     }
 
-    /// Starts a streamed download of at most `max_bytes` bytes.
+    /// Starts a streamed download of at most `max_bytes` bytes. Reading fails
+    /// once the body exceeds `max_bytes`; a body of exactly `max_bytes`
+    /// bytes reads to completion.
     pub fn open(&self, url: &Url, max_bytes: u64) -> Result<Download, FetchError> {
         let (response, url) = self.send(url, max_bytes)?;
         let body = response.into_body();
         let content_length = body.content_length();
-        let reader = body.into_with_config().limit(max_bytes).reader();
+        // ureq's own limit fails a body whose length equals it, so the exact
+        // bound is enforced by `Download::read`.
+        let reader = body
+            .into_with_config()
+            .limit(max_bytes.saturating_add(1))
+            .reader();
         Ok(Download {
             reader,
             content_length,
             url,
+            limit: max_bytes,
+            remaining: max_bytes,
         })
     }
 
