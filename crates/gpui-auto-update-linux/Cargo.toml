@@ -25,5 +25,11 @@ base64 = "0.23.1"
 ed25519-dalek = "3.0.0"
 tiny_http = "0.12.0"
 
+[[test]]
+name = "helper"
+# The helper protocol owns stdout, and the test binary doubles as the
+# application and its helper, so it brings its own runner.
+harness = false
+
 [lints]
 workspace = true
