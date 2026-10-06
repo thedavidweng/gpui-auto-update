@@ -4,6 +4,7 @@
 //! The real engine converts the notifications of Sparkle's updater delegate
 //! into these types; tests and alternative engines construct them directly.
 
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 /// One lifecycle notification from Sparkle's updater.
@@ -67,6 +68,18 @@ pub enum SparkleEvent {
         /// The update's display version.
         version: String,
     },
+    /// Sparkle is about to install and relaunch `update` and agreed to
+    /// wait for the application's save hooks
+    /// (`updater:shouldPostponeRelaunchForUpdate:untilInvokingBlock:`).
+    /// Resume `continuation` once saving completed; dropping it leaves the
+    /// relaunch postponed, and Sparkle installs the update when the
+    /// application quits.
+    RelaunchRequested {
+        /// The update being installed.
+        update: SparkleUpdate,
+        /// Resumes the postponed relaunch.
+        continuation: RelaunchContinuation,
+    },
     /// The update session stopped because of an error
     /// (`updater:didAbortWithError:`). Sparkle also reports "no update
     /// found" this way; see [`SparkleError::is_no_update`].
@@ -84,7 +97,95 @@ pub enum SparkleEvent {
     },
     /// Sparkle will not schedule automatic checks (they are disabled).
     CheckNotScheduled,
+    /// Sparkle is about to present an update session
+    /// (`standardUserDriverWillHandleShowingUpdate:forUpdate:state:`) —
+    /// in its own window (`handled_by_sparkle`) or leaving presentation to
+    /// the application, a gentle reminder for a scheduled discovery.
+    WillShowUpdate {
+        /// Whether Sparkle's own UI presents the update.
+        handled_by_sparkle: bool,
+        /// The update being presented.
+        update: SparkleUpdate,
+        /// Where the session stands and whether the user asked for it.
+        session: SessionState,
+    },
+    /// The user interacted with a reminder the application presented
+    /// (`standardUserDriverDidReceiveUserAttentionForUpdate:`); clear
+    /// attention indicators such as badges.
+    UserAttentionReceived {
+        /// The update the reminder was about.
+        update: SparkleUpdate,
+    },
+    /// The update session is ending
+    /// (`standardUserDriverWillFinishUpdateSession`); remove any reminder
+    /// UI.
+    SessionWillFinish,
 }
+
+/// Where an update session being presented stands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SessionState {
+    /// How far the update had progressed.
+    pub stage: UpdateStage,
+    /// Whether the user asked for the check that found the update.
+    pub user_initiated: bool,
+}
+
+/// What resumes a postponed relaunch; the real engine's closure hops to
+/// the main thread first.
+type Resume = Box<dyn FnOnce() + Send>;
+
+/// A Sparkle install-and-relaunch postponed until the application's save
+/// hooks completed; see [`SparkleEvent::RelaunchRequested`].
+///
+/// Resuming is one-shot and may happen from any thread: only the first
+/// call has an effect. Clones refer to the same continuation, so a value
+/// delivered to several observers can still be resumed only once.
+#[derive(Clone)]
+pub struct RelaunchContinuation {
+    resume: Arc<Mutex<Option<Resume>>>,
+}
+
+impl RelaunchContinuation {
+    /// A continuation that resumes the postponed relaunch by running
+    /// `resume`. The real engine hops to the main thread first; test
+    /// engines may pass any closure.
+    pub fn from_fn(resume: impl FnOnce() + Send + 'static) -> Self {
+        Self {
+            resume: Arc::new(Mutex::new(Some(Box::new(resume)))),
+        }
+    }
+
+    /// Lets Sparkle continue installing and relaunching. Dropping the
+    /// continuation without resuming leaves the relaunch postponed.
+    pub fn resume(self) {
+        let resume = self
+            .resume
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some(resume) = resume {
+            resume();
+        }
+    }
+}
+
+impl std::fmt::Debug for RelaunchContinuation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RelaunchContinuation")
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for RelaunchContinuation {
+    /// Two continuations are equal when they resume the same postponed
+    /// relaunch.
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.resume, &other.resume)
+    }
+}
+
+impl Eq for RelaunchContinuation {}
 
 /// An update Sparkle found in the appcast (`SUAppcastItem`).
 #[derive(Clone, Debug, PartialEq, Eq)]

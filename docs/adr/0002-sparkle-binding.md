@@ -45,9 +45,9 @@ The table compares the spec's macOS backend requirements with what
 | Release notes | Inline description, its format, release-notes and full-release-notes links | Met |
 | Channels | `allowedChannels` through the delegate (not persisted by Sparkle) | Met; the app sets the channel on every launch |
 | Surface useful errors | `ErrorPayload` with domain, code, and localized text; typed no-update reasons | Met |
-| Keep scheduled discovery in GPUI (no Sparkle window) | Gentle-reminder hooks: return `false` from `should_show_scheduled_update` | Met with gentle reminders (T10) |
+| Keep scheduled discovery in GPUI (no Sparkle window) | Gentle-reminder hooks: return `false` from `should_show_scheduled_update` | Met: gentle reminders route through our `PresentationPolicy` (T10) |
 | Retain or reproduce an available-update state | `last_found_update()`, and `check_for_updates()` brings an existing session forward | Mostly met: no handle to the pending user-driver reply |
-| Coordinate installation and relaunch with app saving | `RelaunchHandler` + one-shot `RelaunchContinuation::resume` | Met for relaunch (T10). Not a universal quit veto |
+| Coordinate installation and relaunch with app saving | `RelaunchHandler` + one-shot `RelaunchContinuation::resume` | Met for relaunch: the facade's save hooks run before `resume` (T10). Not a universal quit veto |
 | Fully custom GPUI presentation (Sparkle as engine only) | No custom `SPUUserDriver`; the standard user driver is always used | **Gap 1** |
 | Byte-level download and extraction progress | Only available through `SPUUserDriver` callbacks | **Gap 1** |
 | Sparkle's update permission flow | `updaterShouldPromptForPermissionToCheckForUpdates` is hard-coded to `YES` | **Gap 2** (workaround: `SUEnableAutomaticChecks` in Info.plist) |
@@ -84,8 +84,8 @@ The table compares the spec's macOS backend requirements with what
    (`UpdaterConfig::for_sparkle`/`UpdaterConfig::sparkle`) disables the
    facade's launch, periodic, and on-enable checks. Suppressing Sparkle's
    window for scheduled discoveries (gentle reminders) and postponing
-   relaunch until the save hooks finish (relaunch continuation) are added by
-   T10 on the same structure.
+   relaunch until the save hooks finish (relaunch continuation) build on
+   the same structure.
 5. **Preferences.** `SparkleBackend::preferences` is a `PreferenceStore` with
    `PreferenceOwner::Backend`. Every load reads Sparkle's stored values. A
    save writes only the automatic-check flag, and only when it changed.
@@ -141,7 +141,10 @@ replaces.
   the framework as `docs/sparkle-packaging.md` describes.
 - Tests that need the real framework are opt-in (`--features sparkle`, with
   `SPARKLE_FRAMEWORK_PATH` and `DYLD_FRAMEWORK_PATH`) and marked `#[ignore]`
-  or built only with that feature.
+  or built only with that feature. `tests/sparkle_bundle.rs` goes further:
+  it assembles a temporary app bundle, serves it an appcast over a loopback
+  HTTP server, and verifies that a scheduled discovery reaches the update
+  state while the default presentation policy suppresses Sparkle's window.
 - Our `SparkleEvent`/`SparkleEngine` surface is a small duplicate of the
   binding's types. That is the price of portable tests and of being able to
   switch engines. It only translates types and holds no Sparkle logic.

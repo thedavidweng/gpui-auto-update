@@ -3,6 +3,7 @@
 //! Nothing here needs the Sparkle framework.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
@@ -13,8 +14,9 @@ use gpui_auto_update_core::{
     UpdateCoordinator, UpdateError, UpdatePreferences, UpdateState,
 };
 use gpui_auto_update_macos::{
-    NoUpdateReason, SparkleBackend, SparkleEngine, SparkleError, SparkleEvent, SparkleEvents,
-    SparkleUpdate, UpdateStage, UserChoice,
+    GpuiPresentation, NoUpdateReason, PresentationPolicy, RelaunchContinuation, SessionState,
+    SparkleBackend, SparkleEngine, SparkleError, SparkleEvent, SparkleEvents, SparkleUpdate,
+    UpdateStage, UserChoice,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -385,6 +387,186 @@ fn manual_check_during_a_session_brings_sparkle_forward_with_the_found_update() 
     assert_eq!(manual, expected);
     assert_eq!(background, expected);
     assert_eq!(engine.calls(), vec![Call::StandardUi]);
+}
+
+// --- Scheduled discoveries ---------------------------------------------------
+
+#[test]
+fn a_scheduled_discovery_is_adopted_into_the_available_state() {
+    let (backend, engine) = backend();
+    let coordinator = coordinator(&backend);
+    backend.attach(&coordinator);
+    // Sparkle's scheduler found an update outside any facade check and is
+    // holding the session open for the gentle reminder.
+    engine.with_session_in_progress();
+
+    backend.events().publish(found("5.0"));
+
+    wait_for(&coordinator, |s| {
+        *s == UpdateState::Available(AvailableUpdate::new("5.0"))
+    });
+    assert_eq!(engine.calls(), vec![], "no new Sparkle check runs");
+}
+
+#[test]
+fn a_discovery_matching_the_current_update_is_not_adopted_again() {
+    let (backend, engine, coordinator) = available("5.0");
+    engine.with_session_in_progress();
+
+    backend.events().publish(found("5.0"));
+
+    // Nothing to wait for: adoption must not happen. Give the tracker a
+    // moment, then assert the state and the calls did not change.
+    thread::sleep(Duration::from_millis(50));
+    assert_eq!(
+        coordinator.state(),
+        UpdateState::Available(AvailableUpdate::new("5.0"))
+    );
+    assert_eq!(engine.calls(), vec![Call::Background]);
+}
+
+#[test]
+fn a_discovery_during_another_operation_is_left_to_it() {
+    let (backend, engine, coordinator) = available("2.0");
+    engine.with_session_in_progress();
+    backend.events().publish(SparkleEvent::WillInstallOnQuit {
+        version: "2.0".into(),
+    });
+    wait_for(&coordinator, |s| {
+        *s == UpdateState::WaitingForQuit(AvailableUpdate::new("2.0"))
+    });
+
+    backend.events().publish(found("3.0"));
+
+    thread::sleep(Duration::from_millis(50));
+    assert_eq!(
+        coordinator.state(),
+        UpdateState::WaitingForQuit(AvailableUpdate::new("2.0")),
+        "the running session owns the state"
+    );
+}
+
+#[test]
+fn a_failed_scheduled_session_surfaces_as_a_failed_state() {
+    let (backend, engine) = backend();
+    let coordinator = coordinator(&backend);
+    backend.attach(&coordinator);
+    engine.with_session_in_progress();
+    backend.events().publish(found("2.0"));
+    wait_for(&coordinator, |s| {
+        *s == UpdateState::Available(AvailableUpdate::new("2.0"))
+    });
+
+    backend
+        .events()
+        .publish(SparkleEvent::Aborted(SparkleError::sparkle(
+            3001,
+            "bad signature",
+        )));
+
+    wait_for(
+        &coordinator,
+        |s| matches!(s, UpdateState::Failed(error) if error.kind() == ErrorKind::Signature),
+    );
+}
+
+#[test]
+fn a_failed_scheduled_check_without_a_session_stays_silent() {
+    let (backend, _) = backend();
+    let coordinator = coordinator(&backend);
+    backend.attach(&coordinator);
+
+    backend
+        .events()
+        .publish(SparkleEvent::Aborted(SparkleError::sparkle(
+            1002,
+            "appcast unreachable",
+        )));
+
+    thread::sleep(Duration::from_millis(50));
+    assert_eq!(coordinator.state(), UpdateState::Idle);
+}
+
+// --- Relaunch coordination ---------------------------------------------------
+
+#[test]
+fn the_handoff_gate_receives_postponed_relaunches_and_resumes_them_once() {
+    let (backend, _) = backend();
+    let received = Arc::new(Mutex::new(Vec::new()));
+    let received_by_gate = received.clone();
+    backend.set_handoff_gate(move |continuation| {
+        received_by_gate.lock().unwrap().push(continuation);
+    });
+    let resumes = Arc::new(AtomicUsize::new(0));
+    let counting = resumes.clone();
+
+    backend.events().publish(SparkleEvent::RelaunchRequested {
+        update: SparkleUpdate::new("2.0"),
+        continuation: RelaunchContinuation::from_fn(move || {
+            counting.fetch_add(1, Ordering::SeqCst);
+        }),
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while received.lock().unwrap().is_empty() {
+        assert!(Instant::now() < deadline, "the gate never ran");
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(resumes.load(Ordering::SeqCst), 0, "the gate decides when");
+
+    let continuation = received.lock().unwrap().remove(0);
+    let clone = continuation.clone();
+    continuation.resume();
+    clone.resume();
+    assert_eq!(resumes.load(Ordering::SeqCst), 1, "resuming is one-shot");
+}
+
+#[test]
+fn a_dropped_continuation_stays_postponed() {
+    let resumes = Arc::new(AtomicUsize::new(0));
+    let counting = resumes.clone();
+    let continuation = RelaunchContinuation::from_fn(move || {
+        counting.fetch_add(1, Ordering::SeqCst);
+    });
+
+    drop(continuation);
+
+    assert_eq!(resumes.load(Ordering::SeqCst), 0);
+}
+
+// --- Presentation ------------------------------------------------------------
+
+#[test]
+fn the_default_policy_keeps_scheduled_updates_out_of_sparkles_window() {
+    let policy = GpuiPresentation;
+    let update = SparkleUpdate::new("2.0");
+
+    assert!(!policy.should_show_scheduled_update(&update, false));
+    assert!(
+        !policy.should_show_scheduled_update(&update, true),
+        "not even in immediate focus (critical updates, impatient reminders)"
+    );
+    policy.will_show_update(
+        false,
+        &update,
+        SessionState {
+            stage: UpdateStage::NotDownloaded,
+            user_initiated: false,
+        },
+    );
+    policy.did_receive_user_attention(&update);
+    policy.will_finish_update_session();
+}
+
+#[test]
+fn ending_a_session_clears_the_pending_update() {
+    let events = SparkleEvents::new();
+    events.publish(found("2.0"));
+    assert!(events.pending_update().is_some());
+
+    events.publish(SparkleEvent::SessionWillFinish);
+
+    assert_eq!(events.pending_update(), None);
 }
 
 // --- Capability -------------------------------------------------------------
