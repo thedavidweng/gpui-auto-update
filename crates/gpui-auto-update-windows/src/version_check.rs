@@ -20,7 +20,8 @@ pub const DEFAULT_VERSION_KEY: &str = "ProductVersion";
 /// feed entry that names their version is not signed. Reading the version
 /// from inside the signed bytes stops a relabeled older release from being
 /// installed as a newer one. Every string table that has `key` must hold the
-/// exact `expected` text; a missing key, a missing version resource, or any
+/// exact `expected` text, ignoring surrounding whitespace (Inno Setup pads
+/// its version strings); a missing key, a missing version resource, or any
 /// other value is an [`ErrorKind::ArchiveValidation`] error.
 pub fn confirm_embedded_version(
     path: &Path,
@@ -52,7 +53,9 @@ pub(crate) fn confirm_info(
     key: &str,
     expected: &ReleaseVersion,
 ) -> Result<(), UpdateError> {
-    let found: Vec<&str> = info.strings(key).collect();
+    // Inno Setup pads its version strings with trailing spaces, which no
+    // version contains, so surrounding whitespace is not part of the value.
+    let found: Vec<&str> = info.strings(key).map(str::trim).collect();
     let mismatch = |detail: String| {
         UpdateError::new(ErrorKind::ArchiveValidation)
             .with_message("The downloaded update does not match the release it was published as.")
