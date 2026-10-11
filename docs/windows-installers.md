@@ -198,8 +198,9 @@ surrounding whitespace, such as the trailing spaces Inno Setup pads its version
 strings with, is ignored. A missing version resource, a missing key, or a
 different value fails staging with `ErrorKind::ArchiveValidation`, and
 nothing is installed. Use `with_version_key` to compare a different string,
-such as `FileVersion`. The reader parses only headers and the resource tree, bounds-checks every offset,
-and caps every read, so it is safe to run on any verified artifact.
+such as `FileVersion`. The reader parses only headers and the resource tree,
+bounds-checks every offset, and caps every read, so it is safe to run on any
+verified artifact.
 
 ## Portable installations
 
