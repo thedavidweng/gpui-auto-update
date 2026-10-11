@@ -16,6 +16,7 @@
 //! | `REFERENCE_APP_CHECK_INTERVAL_SECS` | Periodic automatic check interval | the library default |
 //! | `REFERENCE_APP_WINDOWS_INSTALL` | How Windows builds are installed and updated: `inno-setup` or `portable` | none (Windows builds do not update themselves) |
 //! | `REFERENCE_APP_E2E_REPORT` | Absolute path; run unattended and append what happens to it (see `unattended`) | none |
+//! | `REFERENCE_APP_E2E_FAIL_TO_START` | Exit with an error before the main window opens, as a broken release | `false` |
 //!
 //! Empty values count as unset. Nothing is read at run time.
 
@@ -46,6 +47,7 @@ pub struct BuildInputs<'a> {
     pub check_interval_secs: Option<&'a str>,
     pub windows_install: Option<&'a str>,
     pub e2e_report: Option<&'a str>,
+    pub e2e_fail_to_start: Option<&'a str>,
 }
 
 impl BuildInputs<'static> {
@@ -62,6 +64,7 @@ impl BuildInputs<'static> {
             check_interval_secs: option_env!("REFERENCE_APP_CHECK_INTERVAL_SECS"),
             windows_install: option_env!("REFERENCE_APP_WINDOWS_INSTALL"),
             e2e_report: option_env!("REFERENCE_APP_E2E_REPORT"),
+            e2e_fail_to_start: option_env!("REFERENCE_APP_E2E_FAIL_TO_START"),
         }
     }
 }
@@ -83,6 +86,9 @@ pub struct BuildConfig {
     pub windows_install: Option<WindowsInstall>,
     /// Where an unattended end-to-end build reports what happens.
     pub e2e_report: Option<PathBuf>,
+    /// Whether this build is a broken release that exits before its main
+    /// window opens.
+    pub e2e_fail_to_start: bool,
 }
 
 /// The Windows update strategy a build declares.
@@ -173,6 +179,7 @@ impl BuildConfig {
                 }
             })
             .transpose()?;
+        let e2e_fail_to_start = flag("REFERENCE_APP_E2E_FAIL_TO_START", inputs.e2e_fail_to_start)?;
         Ok(Self {
             app_id: set(inputs.app_id).unwrap_or(DEFAULT_APP_ID).to_owned(),
             version,
@@ -182,6 +189,7 @@ impl BuildConfig {
             check_interval,
             windows_install,
             e2e_report,
+            e2e_fail_to_start,
         })
     }
 }
@@ -339,6 +347,35 @@ mod tests {
         assert!(config.allow_debug_self_update);
         assert_eq!(config.externally_managed.as_deref(), Some("Homebrew"));
         assert_eq!(config.check_interval, Some(Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn end_to_end_builds_run_unattended_and_can_be_broken() {
+        let report = std::env::temp_dir().join("e2e").join("report.log");
+        let inputs = BuildInputs {
+            e2e_report: report.to_str(),
+            e2e_fail_to_start: Some("yes"),
+            ..BuildInputs::default()
+        };
+        let config = BuildConfig::from_inputs(&inputs).unwrap();
+        assert_eq!(config.e2e_report, Some(report.clone()));
+        assert!(config.e2e_fail_to_start);
+
+        let plain = BuildConfig::from_inputs(&BuildInputs::default()).unwrap();
+        assert_eq!(plain.e2e_report, None);
+        assert!(!plain.e2e_fail_to_start);
+    }
+
+    #[test]
+    fn a_relative_end_to_end_report_path_is_rejected() {
+        let inputs = BuildInputs {
+            e2e_report: Some("report.log"),
+            ..BuildInputs::default()
+        };
+        assert!(matches!(
+            BuildConfig::from_inputs(&inputs),
+            Err(BuildConfigError::E2eReport(_))
+        ));
     }
 
     #[test]

@@ -2,13 +2,13 @@
 
 use std::borrow::Cow;
 
-use gpui_auto_update::UpdaterConfig;
 use gpui_auto_update::core::check::{FeedCheckSource, UpdateChecker};
 use gpui_auto_update::core::feed::{Arch, Os, UpdateTarget};
 use gpui_auto_update::core::fetch::{FetchPolicy, HttpClient};
 use gpui_auto_update::core::{
     Capability, CheckOutcome, CheckPolicy, CheckRequest, CheckSource, ErrorKind, UpdateError,
 };
+use gpui_auto_update::{NativeFeed, UpdaterConfig};
 
 use crate::build_config::{BuildConfig, BuildConfigError, DEFAULT_APP_ID};
 
@@ -17,8 +17,11 @@ use crate::build_config::{BuildConfig, BuildConfigError, DEFAULT_APP_ID};
 /// A build without a usable feed still gets an updater, whose checks fail
 /// with a configuration error, so the error state is reachable without a
 /// server. On Windows, a build that declares `REFERENCE_APP_WINDOWS_INSTALL`
-/// installs with the Windows backend and that strategy; every other build
-/// uses the facade's default backend.
+/// installs with the Windows backend and that strategy. Every other build
+/// with a feed installs with the platform's default native-feed backend
+/// ([`UpdaterConfig::native_feed`]): on Linux the managed-install backend, and
+/// elsewhere one that cannot update, so Windows builds without a declared
+/// strategy do not update themselves.
 pub fn updater_config(build: &Result<BuildConfig, BuildConfigError>) -> UpdaterConfig {
     let build = match build {
         Ok(build) => build,
@@ -47,21 +50,34 @@ pub fn updater_config(build: &Result<BuildConfig, BuildConfigError>) -> UpdaterC
 }
 
 #[cfg(not(windows))]
-fn base_config(build: &BuildConfig) -> UpdaterConfig {
-    UpdaterConfig::new(build.app_id.clone(), check_source(build))
+fn windows_config(_: &BuildConfig) -> Option<UpdaterConfig> {
+    None
 }
 
+/// The Windows backend, for a build with a feed and a declared strategy.
 #[cfg(windows)]
-fn base_config(build: &BuildConfig) -> UpdaterConfig {
+fn windows_config(build: &BuildConfig) -> Option<UpdaterConfig> {
     let (Some(feed), Some(install)) = (&build.feed, build.windows_install) else {
-        return UpdaterConfig::new(build.app_id.clone(), check_source(build));
+        return None;
     };
-    windows::updater_config(build, feed, install).unwrap_or_else(|error| {
-        UpdaterConfig::new(
-            build.app_id.clone(),
-            Misconfigured(format!("This build cannot update on Windows: {error}").into()),
-        )
-    })
+    Some(
+        windows::updater_config(build, feed, install).unwrap_or_else(|error| {
+            UpdaterConfig::new(
+                build.app_id.clone(),
+                Misconfigured(format!("This build cannot update on Windows: {error}").into()),
+            )
+        }),
+    )
+}
+
+fn base_config(build: &BuildConfig) -> UpdaterConfig {
+    if let Some(config) = windows_config(build) {
+        return config;
+    }
+    match native_feed(build) {
+        Some(feed) => UpdaterConfig::native_feed(build.app_id.clone(), feed),
+        None => UpdaterConfig::new(build.app_id.clone(), check_source(build)),
+    }
 }
 
 #[cfg(windows)]
@@ -107,6 +123,24 @@ mod windows {
                 });
         UpdaterConfig::windows(build.app_id.clone(), config)
     }
+}
+
+/// The native feed of a build that has one, on a platform with native feeds.
+fn native_feed(build: &BuildConfig) -> Option<NativeFeed> {
+    let feed = build.feed.as_ref()?;
+    Os::current()?;
+    Arch::current()?;
+    let policy = FetchPolicy {
+        allow_insecure_http: feed.allow_insecure_http,
+        ..FetchPolicy::default()
+    };
+    NativeFeed::new(
+        feed.url.as_str(),
+        feed.public_key.clone(),
+        build.version.clone(),
+    )
+    .ok()
+    .map(|native| native.with_fetch_policy(policy))
 }
 
 fn check_source(build: &BuildConfig) -> Box<dyn CheckSource> {

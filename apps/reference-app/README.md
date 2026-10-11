@@ -30,6 +30,7 @@ cargo build -p gpui-auto-update-reference-app --release
 | `REFERENCE_APP_CHECK_INTERVAL_SECS` | Periodic automatic check interval | library default |
 | `REFERENCE_APP_WINDOWS_INSTALL` | Windows update strategy: `inno-setup` or `portable` | none; Windows builds do not update themselves |
 | `REFERENCE_APP_E2E_REPORT` | Absolute path; run unattended and append what happens to it | none |
+| `REFERENCE_APP_E2E_FAIL_TO_START` | Exit with an error before the main window opens, as a broken release | `false` |
 
 `reference-app --version` prints the compiled version and exits, so tests can
 tell which build is running.
@@ -40,11 +41,15 @@ installs an update.
 
 ## Unattended end-to-end runs
 
-A build with `REFERENCE_APP_E2E_REPORT` checks for updates as soon as it
-starts, installs whatever the feed offers without waiting for a click, and
-appends one line per step to the report (`started <version>`,
-`update-available <version>`, `handoff`, `up-to-date`, `error ...`). It keeps
-running afterwards; the test ends it. See `src/unattended.rs`.
+A build with `REFERENCE_APP_E2E_REPORT` checks for updates as soon as the
+updater is ready, installs whatever the feed offers without waiting for a
+click, and appends one line per fact to the report (`started <version>`,
+`update-available <version>`, `handoff`, `up-to-date`,
+`previous-update-failure <kind>: <message>`,
+`error <kind>: <message> [(<diagnostic>)]`, `failed-to-start <version>`). After
+a failed update it reports the failure and installs nothing. It keeps
+running afterwards; the test ends it. The full list is in
+`src/unattended.rs`.
 
 ### Windows
 
@@ -64,5 +69,15 @@ flows on a Windows host of the declared architecture:
   1.1.0 executable and restart into it.
 
 Each run signs its feed with a disposable key and serves it from loopback.
-The `Windows end-to-end` workflow runs both flows on x86_64 and ARM64
-runners.
+The installers append their own lines to the same report. The
+`Windows end-to-end` workflow runs both flows on x86_64 and ARM64 runners.
+
+### Linux
+
+`tools/e2e/linux-update.sh` updates a managed install from 1.0.0 to 1.1.0 and
+then rolls back a broken 1.2.0 built with `REFERENCE_APP_E2E_FAIL_TO_START`.
+CI runs it under `xvfb-run` with Mesa's software Vulkan driver:
+
+```sh
+xvfb-run -a tools/e2e/linux-update.sh
+```
