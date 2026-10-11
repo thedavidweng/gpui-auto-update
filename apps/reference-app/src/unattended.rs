@@ -12,8 +12,14 @@
 //! | `update-available <version>` | The check offered this version; it is being installed |
 //! | `up-to-date` | The check found nothing newer |
 //! | `error <kind>: <message> [(<diagnostic>)]` | A check or another operation failed |
-//! | `handoff` | The app is ending so the update can be finished |
+//! | `handoff` | The app is ending so the update can be finished. Under Sparkle the update is installed by Sparkle when the app quits, so this line is written right before unattended mode quits the app itself |
 //! | `failed-to-start <version>` | A build made with `REFERENCE_APP_E2E_FAIL_TO_START` ran and exited |
+//!
+//! Under Sparkle (the `sparkle` feature on macOS, see [`Route::Sparkle`]) a
+//! manual check is presented by Sparkle's own standard window, which nobody
+//! can click on an unattended run. Unattended mode therefore runs a
+//! background check instead and leaves the installation to Sparkle's silent
+//! automatic update, which waits for the app to quit.
 //!
 //! The app keeps running after `up-to-date` or `error`; the test ends it.
 //! Installers may append their own lines to the same report, which is how a
@@ -26,9 +32,20 @@ use std::io::Write as _;
 use std::path::Path;
 use std::rc::Rc;
 
-use gpui::{App, Entity, Subscription};
+use gpui::{App, AppContext as _, Entity, Subscription};
 use gpui_auto_update::core::{CheckKind, CheckOutcome, UpdateError, UpdateState};
 use gpui_auto_update::{Updater, UpdaterEvent};
+
+/// How the build's backend wants an unattended update driven.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Route {
+    /// A manual check, then stage and install the offered update.
+    #[cfg_attr(all(target_os = "macos", feature = "sparkle"), allow(dead_code))]
+    Manual,
+    /// Sparkle: a background check; Sparkle downloads the update and
+    /// installs it when the app quits, which unattended mode then causes.
+    Sparkle,
+}
 
 /// Keeps unattended mode running; drop it to stop.
 pub struct Unattended {
@@ -42,7 +59,13 @@ impl Unattended {
     /// Drives `updater` of the build `version` unattended, reporting to
     /// `report`. Call it right after creating the updater, before it is
     /// ready.
-    pub fn start(updater: &Entity<Updater>, report: &Path, version: &str, cx: &mut App) -> Self {
+    pub fn start(
+        updater: &Entity<Updater>,
+        report: &Path,
+        version: &str,
+        route: Route,
+        cx: &mut App,
+    ) -> Self {
         let report = report.to_path_buf();
         let version = version.to_owned();
         // Set once this mode's own check offered an update, so that only an
@@ -56,11 +79,31 @@ impl Unattended {
                     append(&report, &format!("started {version}"));
                     // The failure, if any, is already set when `Ready` is
                     // delivered; it is reported by its own event below.
-                    updater.update(cx, |updater, cx| {
-                        if updater.previous_update_failure().is_none() {
+                    if updater.read(cx).previous_update_failure().is_some() {
+                        return;
+                    }
+                    match route {
+                        Route::Manual => updater.update(cx, |updater, cx| {
                             updater.check_for_updates(cx);
+                        }),
+                        Route::Sparkle => {
+                            let coordinator = updater.read(cx).coordinator().clone();
+                            let report = report.clone();
+                            cx.background_spawn(async move {
+                                match coordinator.check(CheckKind::Background) {
+                                    Ok(CheckOutcome::UpToDate) => append(&report, "up-to-date"),
+                                    Ok(CheckOutcome::UpdateAvailable(update)) => append(
+                                        &report,
+                                        &format!("update-available {}", update.version),
+                                    ),
+                                    Err(error) => {
+                                        append(&report, &format!("error {}", describe(&error)));
+                                    }
+                                }
+                            })
+                            .detach();
                         }
-                    });
+                    }
                 }
                 UpdaterEvent::PreviousUpdateFailed(error) => {
                     append(
@@ -87,7 +130,17 @@ impl Unattended {
                 _ => {}
             })
         };
+        let quitting = Cell::new(false);
         let state = cx.observe(updater, move |updater, cx| {
+            if route == Route::Sparkle {
+                if matches!(updater.read(cx).state(), UpdateState::WaitingForQuit(_))
+                    && !quitting.replace(true)
+                {
+                    append(&report, "handoff");
+                    cx.quit();
+                }
+                return;
+            }
             if installing.get() {
                 install_when_possible(&updater, &report, &installing, cx);
             }
@@ -159,7 +212,7 @@ mod tests {
     use std::path::Path;
     use std::sync::{Arc, Mutex};
 
-    use gpui::{AppContext as _, Entity, TestAppContext};
+    use gpui::{Entity, TestAppContext};
     use gpui_auto_update::core::ErrorKind;
     use gpui_auto_update::core::{
         AvailableUpdate, Capability, CheckOutcome, CheckRequest, CheckSource,
@@ -236,7 +289,8 @@ mod tests {
             .with_preferences(MemoryPreferenceStore::new())
             .allow_debug_self_update(true);
         let updater = cx.new(|cx| Updater::new(config, cx));
-        let unattended = cx.update(|cx| Unattended::start(&updater, report, "1.0.0", cx));
+        let unattended =
+            cx.update(|cx| Unattended::start(&updater, report, "1.0.0", Route::Manual, cx));
         cx.run_until_parked();
         (updater, unattended)
     }

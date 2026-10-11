@@ -7,6 +7,13 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
+[features]
+# On macOS, update through the real Sparkle framework instead of the native
+# feed (`UpdaterConfig::sparkle`). Building needs SPARKLE_FRAMEWORK_PATH, and
+# the binary only runs from a bundle with Sparkle.framework embedded; see
+# tools/e2e/macos-reference-update.sh.
+sparkle = ["gpui-auto-update/sparkle"]
+
 [[bin]]
 name = "reference-app"
 path = "src/main.rs"

@@ -35,6 +35,14 @@ cargo build -p gpui-auto-update-reference-app --release
 `reference-app --version` prints the compiled version and exits, so tests can
 tell which build is running.
 
+With the `sparkle` cargo feature, a macOS build updates through the real
+Sparkle framework (`UpdaterConfig::sparkle`) instead of the native feed.
+Sparkle reads its feed and public key from the bundle's `Info.plist`, so
+`REFERENCE_APP_FEED_URL` and `REFERENCE_APP_PUBLIC_KEY` are not used. Building
+needs `SPARKLE_FRAMEWORK_PATH` (`gpui-auto-update sparkle fetch`), and the
+executable only runs from a `.app` that embeds `Sparkle.framework`; the build
+script adds the `@executable_path/../Frameworks` run path.
+
 On Windows the build also embeds a version resource whose `ProductVersion`
 is `REFERENCE_APP_VERSION`, which the Windows backend checks before it
 installs an update.
@@ -43,7 +51,7 @@ installs an update.
 
 A build with `REFERENCE_APP_E2E_REPORT` checks for updates as soon as the
 updater is ready, installs whatever the feed offers without waiting for a
-click, and appends one line per fact to the report (`started <version>`,
+click (under Sparkle, see the macOS section), and appends one line per fact to the report (`started <version>`,
 `update-available <version>`, `handoff`, `up-to-date`,
 `previous-update-failure <kind>: <message>`,
 `error <kind>: <message> [(<diagnostic>)]`, `failed-to-start <version>`). After
@@ -81,3 +89,32 @@ CI runs it under `xvfb-run` with Mesa's software Vulkan driver:
 ```sh
 xvfb-run -a tools/e2e/linux-update.sh
 ```
+
+### macOS
+
+`tools/e2e/macos-reference-update.sh` builds 1.0.0 and 1.0.1 with the
+`sparkle` feature, packages each as an ad hoc signed `.app` with Sparkle
+embedded (`tools/e2e/package-reference-app.sh`, which also runs
+`codesign --verify --deep --strict` and `gpui-auto-update sparkle validate`),
+signs an appcast with a disposable key that includes a delta, and serves it
+from loopback:
+
+```sh
+tools/e2e/macos-reference-update.sh            # delta and full scenarios
+E2E_SCENARIOS=delta tools/e2e/macos-reference-update.sh
+```
+
+- **delta**: Sparkle must download the generated 1.0.0 to 1.0.1 delta and not
+  the full archive.
+- **full**: the delta is listed but answers 404, so Sparkle must fall back to
+  the full archive.
+
+Under Sparkle a manual check is presented by Sparkle's own standard window,
+which nobody can click on an unattended run. Unattended mode therefore runs a
+background check and leaves the installation to Sparkle's silent automatic
+update, which installs when the app quits: once the update waits for the quit
+it writes `handoff` and quits the app. The script then waits for Sparkle to
+swap the bundle, checks the signature and the version, and starts 1.0.1 to see
+it report `up-to-date`. The `macOS end-to-end` workflow runs this on a hosted
+runner without credentials, and notarizes a Developer ID signed bundle when the
+signing secrets exist.

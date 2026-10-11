@@ -11,6 +11,7 @@ use gpui_auto_update::core::{
 use gpui_auto_update::{NativeFeed, UpdaterConfig};
 
 use crate::build_config::{BuildConfig, BuildConfigError, DEFAULT_APP_ID};
+use crate::unattended::Route;
 
 /// The updater configuration for `build`.
 ///
@@ -49,6 +50,7 @@ pub fn updater_config(build: &Result<BuildConfig, BuildConfigError>) -> UpdaterC
     config
 }
 
+#[cfg_attr(all(target_os = "macos", feature = "sparkle"), allow(dead_code))]
 #[cfg(not(windows))]
 fn windows_config(_: &BuildConfig) -> Option<UpdaterConfig> {
     None
@@ -70,6 +72,26 @@ fn windows_config(build: &BuildConfig) -> Option<UpdaterConfig> {
     )
 }
 
+/// With the `sparkle` feature on macOS, Sparkle does everything: its feed,
+/// public key, and schedule come from the bundle's `Info.plist`, so the
+/// build-time feed is not used.
+#[cfg(all(target_os = "macos", feature = "sparkle"))]
+fn base_config(build: &BuildConfig) -> UpdaterConfig {
+    UpdaterConfig::sparkle(build.app_id.clone()).unwrap_or_else(|error| {
+        UpdaterConfig::new(
+            build.app_id.clone(),
+            Misconfigured(format!("Sparkle could not start: {error}.").into()),
+        )
+    })
+}
+
+/// How unattended mode drives this build's backend.
+#[cfg(all(target_os = "macos", feature = "sparkle"))]
+pub const UNATTENDED_ROUTE: Route = Route::Sparkle;
+#[cfg(not(all(target_os = "macos", feature = "sparkle")))]
+pub const UNATTENDED_ROUTE: Route = Route::Manual;
+
+#[cfg(not(all(target_os = "macos", feature = "sparkle")))]
 fn base_config(build: &BuildConfig) -> UpdaterConfig {
     if let Some(config) = windows_config(build) {
         return config;
@@ -126,6 +148,7 @@ mod windows {
 }
 
 /// The native feed of a build that has one, on a platform with native feeds.
+#[cfg_attr(all(target_os = "macos", feature = "sparkle"), allow(dead_code))]
 fn native_feed(build: &BuildConfig) -> Option<NativeFeed> {
     let feed = build.feed.as_ref()?;
     Os::current()?;
@@ -143,6 +166,7 @@ fn native_feed(build: &BuildConfig) -> Option<NativeFeed> {
     .map(|native| native.with_fetch_policy(policy))
 }
 
+#[cfg_attr(all(target_os = "macos", feature = "sparkle"), allow(dead_code))]
 fn check_source(build: &BuildConfig) -> Box<dyn CheckSource> {
     let Some(feed) = &build.feed else {
         return Box::new(Misconfigured(
@@ -190,6 +214,7 @@ mod tests {
 
     /// As if a platform backend reported a self-managed installation, so
     /// checks reach the check source.
+    #[cfg_attr(all(target_os = "macos", feature = "sparkle"), allow(dead_code))]
     fn self_managed_updater(
         cx: &mut TestAppContext,
         build: Result<BuildConfig, BuildConfigError>,
@@ -213,6 +238,7 @@ mod tests {
         updater.read_with(cx, |u, _| u.state())
     }
 
+    #[cfg(not(all(target_os = "macos", feature = "sparkle")))]
     #[gpui::test]
     fn a_build_without_a_feed_fails_checks_with_a_configuration_error(cx: &mut TestAppContext) {
         let updater = self_managed_updater(cx, BuildConfig::from_inputs(&BuildInputs::default()));
@@ -225,6 +251,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(all(target_os = "macos", feature = "sparkle")))]
     #[gpui::test]
     fn a_misconfigured_build_reports_why_when_checking(cx: &mut TestAppContext) {
         let updater = self_managed_updater(cx, Err(BuildConfigError::MissingPublicKey));
