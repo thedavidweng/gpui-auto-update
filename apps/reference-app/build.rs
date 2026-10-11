@@ -1,4 +1,9 @@
-//! Embeds a Windows version resource whose `ProductVersion` is the build's
+//! Build-time platform glue.
+//!
+//! On macOS with the `sparkle` feature it adds the run path the executable
+//! needs to find `Sparkle.framework` in its app bundle.
+//!
+//! On Windows it embeds a version resource whose `ProductVersion` is the build's
 //! `REFERENCE_APP_VERSION`.
 //!
 //! The Windows backend refuses an artifact whose embedded version differs
@@ -14,7 +19,13 @@ const DEFAULT_VERSION: &str = "1.0.0";
 
 fn main() {
     println!("cargo:rerun-if-env-changed=REFERENCE_APP_VERSION");
-    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if target_os == "macos" && env::var_os("CARGO_FEATURE_SPARKLE").is_some() {
+        // The executable links Sparkle.framework, which the app bundle
+        // embeds next to it.
+        println!("cargo:rustc-link-arg-bins=-Wl,-rpath,@executable_path/../Frameworks");
+    }
+    if target_os != "windows" {
         return;
     }
     let version = env::var("REFERENCE_APP_VERSION")

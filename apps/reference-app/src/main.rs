@@ -145,7 +145,8 @@ fn main() {
     Application::new().run(move |cx: &mut App| {
         let updater = gpui_auto_update::init(setup::updater_config(&build), cx);
         if let Some(report) = &e2e_report {
-            let unattended = Unattended::start(&updater, report, &version, cx);
+            let unattended =
+                Unattended::start(&updater, report, &version, setup::UNATTENDED_ROUTE, cx);
             cx.set_global(unattended);
         }
 
