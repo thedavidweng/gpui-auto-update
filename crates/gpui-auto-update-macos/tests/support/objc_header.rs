@@ -65,8 +65,8 @@ pub fn protocol_selectors(header: &str, name: &str) -> Option<ProtocolSelectors>
 /// The selector of one method or property declaration, with types,
 /// attributes, and macro arguments already removed.
 fn selector_of(tokens: &[&str]) -> Option<String> {
-    match tokens.first()? {
-        &"-" => {
+    match *tokens.first()? {
+        "-" => {
             let pieces: Vec<&str> = tokens[1..]
                 .iter()
                 .copied()
@@ -78,7 +78,7 @@ fn selector_of(tokens: &[&str]) -> Option<String> {
                 pieces.concat()
             })
         }
-        &"@property" => {
+        "@property" => {
             // Attributes such as `NS_SWIFT_NAME` follow the name; the name
             // is the last token before them that is not a macro.
             let name = tokens[1..]
