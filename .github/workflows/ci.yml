@@ -60,7 +60,8 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
       - name: Build docs with warnings denied
-        if: runner.os == 'Linux'
+        # On every OS, so documentation of platform-specific public APIs is
+        # checked where those APIs exist.
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --no-deps --locked

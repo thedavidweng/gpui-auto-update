@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Documentation: a complete README (platform matrix, macOS-first quick start
+  with a cross-platform continuation, acknowledgements) and guides for the
+  security and trust model, the update state machine, package-manager
+  ownership, CI and release recipes, architecture, troubleshooting,
+  compatibility (including `[patch]` guidance for GPUI), and migration, indexed
+  in `docs/README.md`. The README's Rust snippets are compiled as doctests of
+  the facade crate.
+- CI builds the documentation with warnings denied on macOS, Windows, and Linux,
+  and the facade crate declares its docs.rs targets.
 - Cargo workspace with the core, macOS, Windows, and Linux backend, GPUI
   facade, neutral UI, CLI, and reference application crates (placeholders).
 - CI on macOS, Windows, and Linux with rustfmt, clippy, tests, docs, MSRV, and
