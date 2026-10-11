@@ -21,3 +21,7 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
+    ignore:
+      # The ref of dtolnay/rust-toolchain names a Rust toolchain (the MSRV
+      # job pins 1.85), not a version of the action.
+      - dependency-name: dtolnay/rust-toolchain
