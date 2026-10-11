@@ -30,7 +30,7 @@ jobs:
     # No concurrency group: a pending release must never be cancelled by a
     # newer push.
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -59,7 +59,7 @@ jobs:
       group: release-plz-pr-${{ github.ref }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false

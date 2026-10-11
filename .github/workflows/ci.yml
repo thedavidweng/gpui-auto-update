@@ -25,7 +25,7 @@ jobs:
     name: rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -39,7 +39,7 @@ jobs:
         os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -70,7 +70,7 @@ jobs:
     name: Sparkle backend (macOS, real framework)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -93,7 +93,7 @@ jobs:
       # full debug info.
       CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Install GPUI system dependencies, a virtual display, and a software Vulkan driver
         run: |
@@ -111,7 +111,7 @@ jobs:
     name: MSRV (non-GPUI crates)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
       - run: >-
@@ -130,7 +130,7 @@ jobs:
       matrix:
         checks: [advisories, bans licenses sources]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           arguments: --locked
