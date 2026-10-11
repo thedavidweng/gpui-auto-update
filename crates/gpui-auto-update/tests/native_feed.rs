@@ -1,5 +1,8 @@
 //! Native-feed configuration with the platform's default backend.
 
+#[cfg(target_os = "linux")]
+mod support;
+
 use gpui::TestAppContext;
 use gpui_auto_update::core::trust::TrustedKey;
 use gpui_auto_update::core::version::ReleaseVersion;
@@ -50,4 +53,37 @@ fn an_invalid_feed_url_is_a_configuration_error() {
     )
     .unwrap_err();
     assert_eq!(error.kind(), ErrorKind::Configuration);
+}
+
+#[cfg(target_os = "linux")]
+#[gpui::test]
+fn the_configured_channel_can_be_queried_and_changed(cx: &mut TestAppContext) {
+    use gpui_auto_update::UpdaterEvent;
+    use gpui_auto_update::core::Channel;
+    use gpui_auto_update::core::feed::Channel as FeedChannel;
+
+    let config = UpdaterConfig::native_feed(
+        "dev.example.native",
+        feed().with_channel(FeedChannel::new("beta").unwrap()),
+    )
+    .with_preferences(MemoryPreferenceStore::new())
+    .with_policy(CheckPolicy::recommended().with_check_on_launch(false))
+    .with_build_profile(BuildProfile::Release);
+    let updater = cx.update(|cx| gpui_auto_update::init(config, cx));
+    cx.run_until_parked();
+    assert_eq!(
+        updater.read_with(cx, |u, _| u.channel().cloned()),
+        Some(Channel::new("beta"))
+    );
+
+    let recorder = support::Recorder::new(&updater, cx);
+    updater.update(cx, |u, cx| u.set_channel(None, cx)).unwrap();
+    cx.run_until_parked();
+
+    assert_eq!(updater.read_with(cx, |u, _| u.channel().cloned()), None);
+    assert!(
+        recorder
+            .events()
+            .contains(&UpdaterEvent::ChannelChanged(None))
+    );
 }

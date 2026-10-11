@@ -7,8 +7,11 @@
 
 #![forbid(unsafe_code)]
 
+mod doctor;
 mod feed;
+mod init;
 mod keys;
+mod project;
 mod sparkle;
 mod verify;
 
@@ -26,6 +29,11 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Inspect an application package and explain the updater
+    /// configuration it needs.
+    Init(init::InitArgs),
+    /// Validate an application's updater integration without publishing.
+    Doctor(doctor::DoctorArgs),
     /// Manage Sparkle-compatible Ed25519 signing keys.
     Keys(KeysArgs),
     /// Acquire, embed, sign, and validate the Sparkle framework (macOS).
@@ -78,6 +86,8 @@ fn main() -> ExitCode {
         Some(Command::Feed(args)) => return feed::run(args.args.into_iter()),
         Some(Command::Sparkle(args)) => sparkle::run(args),
         Some(Command::Verify(args)) => verify::run(args),
+        Some(Command::Init(args)) => init::run(args),
+        Some(Command::Doctor(args)) => doctor::run(args),
     };
     match result {
         Ok(code) => code,

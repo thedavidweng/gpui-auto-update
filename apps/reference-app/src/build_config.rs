@@ -14,10 +14,14 @@
 //! | `REFERENCE_APP_ALLOW_DEBUG_SELF_UPDATE` | Let a debug build install updates | `false` |
 //! | `REFERENCE_APP_EXTERNALLY_MANAGED` | Package manager name; marks the install externally managed | none |
 //! | `REFERENCE_APP_CHECK_INTERVAL_SECS` | Periodic automatic check interval | the library default |
+//! | `REFERENCE_APP_WINDOWS_INSTALL` | How Windows builds are installed and updated: `inno-setup` or `portable` | none (Windows builds do not update themselves) |
+//! | `REFERENCE_APP_E2E_REPORT` | Absolute path; run unattended and append what happens to it (see `unattended`) | none |
+//! | `REFERENCE_APP_E2E_FAIL_TO_START` | Exit with an error before the main window opens, as a broken release | `false` |
 //!
 //! Empty values count as unset. Nothing is read at run time.
 
 use std::net::IpAddr;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui_auto_update::core::trust::TrustedKey;
@@ -41,6 +45,9 @@ pub struct BuildInputs<'a> {
     pub allow_debug_self_update: Option<&'a str>,
     pub externally_managed: Option<&'a str>,
     pub check_interval_secs: Option<&'a str>,
+    pub windows_install: Option<&'a str>,
+    pub e2e_report: Option<&'a str>,
+    pub e2e_fail_to_start: Option<&'a str>,
 }
 
 impl BuildInputs<'static> {
@@ -55,6 +62,9 @@ impl BuildInputs<'static> {
             allow_debug_self_update: option_env!("REFERENCE_APP_ALLOW_DEBUG_SELF_UPDATE"),
             externally_managed: option_env!("REFERENCE_APP_EXTERNALLY_MANAGED"),
             check_interval_secs: option_env!("REFERENCE_APP_CHECK_INTERVAL_SECS"),
+            windows_install: option_env!("REFERENCE_APP_WINDOWS_INSTALL"),
+            e2e_report: option_env!("REFERENCE_APP_E2E_REPORT"),
+            e2e_fail_to_start: option_env!("REFERENCE_APP_E2E_FAIL_TO_START"),
         }
     }
 }
@@ -70,6 +80,25 @@ pub struct BuildConfig {
     /// externally managed.
     pub externally_managed: Option<String>,
     pub check_interval: Option<Duration>,
+    /// How this build is installed on Windows; `None` leaves Windows
+    /// installs unable to update themselves.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub windows_install: Option<WindowsInstall>,
+    /// Where an unattended end-to-end build reports what happens.
+    pub e2e_report: Option<PathBuf>,
+    /// Whether this build is a broken release that exits before its main
+    /// window opens.
+    pub e2e_fail_to_start: bool,
+}
+
+/// The Windows update strategy a build declares.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowsInstall {
+    /// Installed per user by an Inno Setup installer; updates run the new
+    /// installer.
+    InnoSetup,
+    /// A single executable that updates by replacing itself.
+    Portable,
 }
 
 /// Where updates come from and who must have signed them.
@@ -99,6 +128,10 @@ pub enum BuildConfigError {
     Flag { name: &'static str, value: String },
     #[error("REFERENCE_APP_CHECK_INTERVAL_SECS must be a positive number of seconds, not {0:?}")]
     CheckInterval(String),
+    #[error("REFERENCE_APP_WINDOWS_INSTALL must be inno-setup or portable, not {0:?}")]
+    WindowsInstall(String),
+    #[error("REFERENCE_APP_E2E_REPORT must be an absolute path, not {0:?}")]
+    E2eReport(String),
 }
 
 impl BuildConfig {
@@ -129,6 +162,24 @@ impl BuildConfig {
                 _ => Err(BuildConfigError::CheckInterval(text.to_owned())),
             })
             .transpose()?;
+        let windows_install = set(inputs.windows_install)
+            .map(|text| match text {
+                "inno-setup" => Ok(WindowsInstall::InnoSetup),
+                "portable" => Ok(WindowsInstall::Portable),
+                other => Err(BuildConfigError::WindowsInstall(other.to_owned())),
+            })
+            .transpose()?;
+        let e2e_report = set(inputs.e2e_report)
+            .map(|text| {
+                let path = PathBuf::from(text);
+                if path.is_absolute() {
+                    Ok(path)
+                } else {
+                    Err(BuildConfigError::E2eReport(text.to_owned()))
+                }
+            })
+            .transpose()?;
+        let e2e_fail_to_start = flag("REFERENCE_APP_E2E_FAIL_TO_START", inputs.e2e_fail_to_start)?;
         Ok(Self {
             app_id: set(inputs.app_id).unwrap_or(DEFAULT_APP_ID).to_owned(),
             version,
@@ -136,6 +187,9 @@ impl BuildConfig {
             allow_debug_self_update,
             externally_managed: set(inputs.externally_managed).map(str::to_owned),
             check_interval,
+            windows_install,
+            e2e_report,
+            e2e_fail_to_start,
         })
     }
 }
@@ -208,6 +262,56 @@ mod tests {
     }
 
     #[test]
+    fn the_windows_install_kind_is_declared_never_guessed() {
+        let declared = |value: &'static str| {
+            BuildConfig::from_inputs(&BuildInputs {
+                windows_install: Some(value),
+                ..BuildInputs::default()
+            })
+        };
+        assert_eq!(
+            BuildConfig::from_inputs(&BuildInputs::default())
+                .unwrap()
+                .windows_install,
+            None
+        );
+        assert_eq!(
+            declared("inno-setup").unwrap().windows_install,
+            Some(WindowsInstall::InnoSetup)
+        );
+        assert_eq!(
+            declared("portable").unwrap().windows_install,
+            Some(WindowsInstall::Portable)
+        );
+        assert_eq!(
+            declared("msi"),
+            Err(BuildConfigError::WindowsInstall("msi".into()))
+        );
+    }
+
+    #[test]
+    fn an_end_to_end_report_must_be_an_absolute_path() {
+        let report = if cfg!(windows) {
+            r"C:\e2e\report.log"
+        } else {
+            "/tmp/e2e/report.log"
+        };
+        let config = BuildConfig::from_inputs(&BuildInputs {
+            e2e_report: Some(report),
+            ..BuildInputs::default()
+        })
+        .unwrap();
+        assert_eq!(config.e2e_report, Some(PathBuf::from(report)));
+        assert!(matches!(
+            BuildConfig::from_inputs(&BuildInputs {
+                e2e_report: Some("report.log"),
+                ..BuildInputs::default()
+            }),
+            Err(BuildConfigError::E2eReport(_))
+        ));
+    }
+
+    #[test]
     fn empty_inputs_count_as_unset() {
         let inputs = BuildInputs {
             version: Some(""),
@@ -243,6 +347,35 @@ mod tests {
         assert!(config.allow_debug_self_update);
         assert_eq!(config.externally_managed.as_deref(), Some("Homebrew"));
         assert_eq!(config.check_interval, Some(Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn end_to_end_builds_run_unattended_and_can_be_broken() {
+        let report = std::env::temp_dir().join("e2e").join("report.log");
+        let inputs = BuildInputs {
+            e2e_report: report.to_str(),
+            e2e_fail_to_start: Some("yes"),
+            ..BuildInputs::default()
+        };
+        let config = BuildConfig::from_inputs(&inputs).unwrap();
+        assert_eq!(config.e2e_report, Some(report.clone()));
+        assert!(config.e2e_fail_to_start);
+
+        let plain = BuildConfig::from_inputs(&BuildInputs::default()).unwrap();
+        assert_eq!(plain.e2e_report, None);
+        assert!(!plain.e2e_fail_to_start);
+    }
+
+    #[test]
+    fn a_relative_end_to_end_report_path_is_rejected() {
+        let inputs = BuildInputs {
+            e2e_report: Some("report.log"),
+            ..BuildInputs::default()
+        };
+        assert!(matches!(
+            BuildConfig::from_inputs(&inputs),
+            Err(BuildConfigError::E2eReport(_))
+        ));
     }
 
     #[test]

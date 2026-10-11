@@ -12,7 +12,9 @@ use gpui_auto_update_core::feed::{Arch, FeedLimits, Os, UpdateTarget};
 use gpui_auto_update_core::fetch::{FetchPolicy, HttpClient};
 use gpui_auto_update_core::trust::{EdSignature, TrustedKey, VerifyError};
 use gpui_auto_update_core::version::ReleaseVersion;
-use gpui_auto_update_core::{Capability, ErrorKind, UpdateCoordinator, UpdateError, UpdateEvent};
+use gpui_auto_update_core::{
+    Capability, Channel, ErrorKind, UpdateCoordinator, UpdateError, UpdateEvent,
+};
 use url::Url;
 
 use crate::config::WindowsUpdateConfig;
@@ -142,6 +144,24 @@ impl WindowsBackend {
     /// The check source to give the update coordinator.
     pub fn check_source(&self) -> Arc<FeedCheckSource> {
         self.inner.source.clone()
+    }
+
+    /// The channel checks select from in addition to the default channel;
+    /// `None` is the default channel only. Starts as the first channel
+    /// declared with [`WindowsUpdateConfig::with_channel`].
+    pub fn channel(&self) -> Option<Channel> {
+        self.inner.source.channel()
+    }
+
+    /// Lets the next checks select releases on `channel` in addition to the
+    /// default channel, or only on the default channel for `None`,
+    /// replacing the declared channels.
+    ///
+    /// The choice is not persisted; set it again on every launch, as on
+    /// macOS. Fails with [`ErrorKind::Configuration`] for an invalid
+    /// channel name.
+    pub fn set_channel(&self, channel: Option<Channel>) -> Result<(), UpdateError> {
+        self.inner.source.set_channel(channel)
     }
 
     /// The architecture whose feed is used.

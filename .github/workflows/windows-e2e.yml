@@ -1,0 +1,87 @@
+name: Windows end-to-end
+
+# Updates the reference app from 1.0.0 to 1.1.0 on real Windows runners:
+# per-user Inno Setup installer and portable executable, x86_64 and ARM64.
+# Everything is local to the runner: a disposable signing key, a loopback
+# feed server, and installs under the runner's temp directory.
+
+on:
+  push:
+    branches: [main, "spec-*", "ticket/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  # Debug builds without debug info keep the installers small and the
+  # builds fast; the builds opt in to self-update explicitly.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+
+jobs:
+  e2e:
+    name: ${{ matrix.flow }} (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+        flow: [inno-setup, portable]
+        include:
+          - arch: x86_64
+            runner: windows-latest
+            triple: x86_64-pc-windows-msvc
+          - arch: aarch64
+            runner: windows-11-arm
+            triple: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.triple }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-e2e-${{ matrix.arch }}
+      - name: Install Inno Setup
+        if: matrix.flow == 'inno-setup'
+        shell: pwsh
+        run: |
+          $known = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe")
+          $iscc = $known | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            $iscc = $known | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw 'Inno Setup could not be installed' }
+          (Get-Item $iscc).VersionInfo | Format-List ProductVersion
+          "ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Update ${{ matrix.flow }} 1.0.0 -> 1.1.0
+        shell: pwsh
+        run: |
+          $arguments = @{
+            Arch    = '${{ matrix.arch }}'
+            Flow    = '${{ matrix.flow }}'
+            WorkDir = Join-Path $env:RUNNER_TEMP 'e2e'
+          }
+          if ($env:ISCC) { $arguments.Iscc = $env:ISCC }
+          ./tools/e2e/windows/run-e2e.ps1 @arguments
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-e2e-${{ matrix.flow }}-${{ matrix.arch }}
+          path: |
+            ${{ runner.temp }}/e2e/**/*.log
+            ${{ runner.temp }}/e2e/site/**/*.xml
+          if-no-files-found: ignore

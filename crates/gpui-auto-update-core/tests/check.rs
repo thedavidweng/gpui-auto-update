@@ -6,10 +6,15 @@ use std::io::Read;
 use std::sync::Arc;
 use std::time::Duration;
 
-use gpui_auto_update_core::check::{CheckError, UpdateChecker};
-use gpui_auto_update_core::feed::{Arch, FeedError, FeedLimits, Os, Selection, UpdateTarget};
+use gpui_auto_update_core::check::{CheckError, FeedCheckSource, UpdateChecker};
+use gpui_auto_update_core::feed::{
+    Arch, Channel as FeedChannel, FeedError, FeedLimits, Os, Selection, UpdateTarget,
+};
 use gpui_auto_update_core::fetch::{FetchError, FetchPolicy, HttpClient};
 use gpui_auto_update_core::version::ReleaseVersion;
+use gpui_auto_update_core::{
+    Channel, CheckKind, CheckOutcome, CheckRequest, CheckSource as _, ErrorKind,
+};
 use support::{Item, feed, signing_key, trusted_key};
 use url::Url;
 
@@ -358,4 +363,76 @@ fn streamed_chunked_download_is_cut_off_at_the_limit() {
     let mut body = Vec::new();
     assert!(download.read_to_end(&mut body).is_err());
     assert!(body.len() <= 5_000);
+}
+
+// --- Channels ---------------------------------------------------------------
+
+fn channel_feed() -> String {
+    let key = signing_key(9);
+    feed(&[
+        Item::signed("1.5.0", &key, b"stable"),
+        Item::signed("1.6.0-beta.1", &key, b"beta").channel("beta"),
+        Item::signed("1.7.0-nightly.1", &key, b"nightly").channel("nightly"),
+    ])
+}
+
+fn checked_version(source: &FeedCheckSource) -> Option<String> {
+    match source.check(&CheckRequest::new(CheckKind::Manual)).unwrap() {
+        CheckOutcome::UpdateAvailable(update) => Some(update.version),
+        CheckOutcome::UpToDate => None,
+    }
+}
+
+#[test]
+fn feed_check_source_selects_the_configured_channel() {
+    let xml = channel_feed();
+    let base = serve(move |rq| rq.respond(bytes(xml.clone())).unwrap());
+    let source = FeedCheckSource::new(checker(base), v("1.4.0"));
+
+    assert_eq!(source.channel(), None);
+    assert_eq!(checked_version(&source).as_deref(), Some("1.5.0"));
+
+    source.set_channel(Some(Channel::new("beta"))).unwrap();
+    assert_eq!(source.channel(), Some(Channel::new("beta")));
+    assert_eq!(checked_version(&source).as_deref(), Some("1.6.0-beta.1"));
+    assert_eq!(
+        source.selected().unwrap().item.channel.unwrap().as_str(),
+        "beta"
+    );
+
+    source.set_channel(Some(Channel::new("nightly"))).unwrap();
+    assert_eq!(checked_version(&source).as_deref(), Some("1.7.0-nightly.1"));
+
+    source.set_channel(None).unwrap();
+    assert_eq!(source.channel(), None);
+    assert_eq!(checked_version(&source).as_deref(), Some("1.5.0"));
+}
+
+#[test]
+fn feed_check_source_starts_on_the_checkers_channel() {
+    let xml = channel_feed();
+    let base = serve(move |rq| rq.respond(bytes(xml.clone())).unwrap());
+    let checker = UpdateChecker::new(
+        base,
+        UpdateTarget::new(Os::Linux, Arch::X86_64).with_channel(FeedChannel::new("beta").unwrap()),
+        HttpClient::new(test_policy()),
+    );
+    let source = FeedCheckSource::new(checker, v("1.4.0"));
+
+    assert_eq!(source.channel(), Some(Channel::new("beta")));
+    assert_eq!(checked_version(&source).as_deref(), Some("1.6.0-beta.1"));
+}
+
+#[test]
+fn invalid_channel_names_are_a_configuration_error() {
+    let source = FeedCheckSource::new(
+        checker(Url::parse("https://example.invalid/").unwrap()),
+        v("1.4.0"),
+    );
+    source.set_channel(Some(Channel::new("beta"))).unwrap();
+    for bad in ["", ".hidden", "with space", "../beta", &"x".repeat(65)] {
+        let error = source.set_channel(Some(Channel::new(bad))).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Configuration, "{bad:?}");
+    }
+    assert_eq!(source.channel(), Some(Channel::new("beta")));
 }
