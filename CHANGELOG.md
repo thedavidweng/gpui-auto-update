@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.0](https://github.com/thedavidweng/gpui-auto-update/releases/tag/gpui-auto-update-v0.0.0) - 2026-10-11
+
+### Other
+
+- Complete the README and documentation (T26, #27)
+- Select release channels on Windows and Linux through the facade (T23, #24)
+- Merge remote-tracking branch 'origin/spec-1-integration' into ticket/T10-macos-background
+- Adopt Sparkle's scheduled discoveries and coordinate relaunch (T10, #11)
+- Merge T21 ([#22](https://github.com/thedavidweng/gpui-auto-update/pull/22)): Linux helper: swap, health confirmation, rollback
+- Merge T17 ([#18](https://github.com/thedavidweng/gpui-auto-update/pull/18)): Windows backend
+- Merge remote-tracking branch 'origin/spec-1-integration' into ticket/T21-linux-helper
+- Add Linux update helper with swap, health confirmation, and rollback (T21, #22)
+- Merge remote-tracking branch 'origin/spec-1-integration' into ticket/T17-windows-backend
+- Add Windows backend with Inno Setup handoff and portable updates (T17, #18)
+- Merge remote-tracking branch 'origin/spec-1-integration' into ticket/T9-macos-backend
+- Add the Sparkle 2 macOS backend (T9, #10)
+- Judge preference base directories by the target platform's path rules
+- Merge T25 ([#26](https://github.com/thedavidweng/gpui-auto-update/pull/26)): Project release engineering
+- Let backends drive the coordinator directly while staging (T6, #7)
+- Add GPUI facade entity, actions, and backend contract (T6, #7)
+- Add release-plz release automation and fresh-consumer packaging check (T25, #26)
+- Bootstrap workspace, CI, and repository scaffolding (T1, #2)
+
 ### Added
 
 - Documentation: a complete README (platform matrix, macOS-first quick start
