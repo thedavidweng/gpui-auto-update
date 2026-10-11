@@ -89,6 +89,13 @@
 
 #![forbid(unsafe_code)]
 
+// Compiles the repository README's Rust snippets as doctests, so they cannot
+// drift from the API. The file is not part of the published package, which is
+// fine: this item only exists while running doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../../../README.md")]
+struct RepositoryReadme;
+
 mod backend;
 mod config;
 #[cfg(any(target_os = "linux", all(test, unix)))]

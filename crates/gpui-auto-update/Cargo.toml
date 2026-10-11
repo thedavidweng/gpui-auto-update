@@ -1,6 +1,6 @@
 [package]
 name = "gpui-auto-update"
-description = "Production-grade automatic updates for GPUI apps — Sparkle on macOS, signed native updates on Windows and Linux."
+description = "Sparkle-quality automatic updates for GPUI. Sparkle on macOS, signed native updates on Windows and Linux, one observable GPUI API."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -44,3 +44,10 @@ gpui-auto-update-linux.workspace = true
 
 [lints]
 workspace = true
+
+[package.metadata.docs.rs]
+# Platform code is cfg-gated, so document it on the platforms it targets.
+default-target = "aarch64-apple-darwin"
+targets = ["aarch64-apple-darwin", "x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
+# docs.rs sets DOCS_RS, which makes sparkle-updater skip linking the framework.
+features = ["sparkle"]
