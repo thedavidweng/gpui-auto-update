@@ -19,6 +19,9 @@ gpui = { workspace = true, features = ["font-kit", "wayland", "x11", "windows-ma
 thiserror = "2.0.21"
 url = "2.5.8"
 
+[build-dependencies]
+embed-resource = "3.0.11"
+
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
 tempfile = "3.27.0"

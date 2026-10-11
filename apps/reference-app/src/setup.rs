@@ -16,7 +16,9 @@ use crate::build_config::{BuildConfig, BuildConfigError, DEFAULT_APP_ID};
 ///
 /// A build without a usable feed still gets an updater, whose checks fail
 /// with a configuration error, so the error state is reachable without a
-/// server. The install backend is the facade's default.
+/// server. On Windows, a build that declares `REFERENCE_APP_WINDOWS_INSTALL`
+/// installs with the Windows backend and that strategy; every other build
+/// uses the facade's default backend.
 pub fn updater_config(build: &Result<BuildConfig, BuildConfigError>) -> UpdaterConfig {
     let build = match build {
         Ok(build) => build,
@@ -28,8 +30,7 @@ pub fn updater_config(build: &Result<BuildConfig, BuildConfigError>) -> UpdaterC
         }
     };
 
-    let mut config = UpdaterConfig::new(build.app_id.clone(), check_source(build))
-        .allow_debug_self_update(build.allow_debug_self_update);
+    let mut config = base_config(build).allow_debug_self_update(build.allow_debug_self_update);
     if let Some(manager) = &build.externally_managed {
         config = config.with_capability(Capability::ExternallyManaged {
             manager: Some(manager.clone()),
@@ -43,6 +44,69 @@ pub fn updater_config(build: &Result<BuildConfig, BuildConfigError>) -> UpdaterC
         );
     }
     config
+}
+
+#[cfg(not(windows))]
+fn base_config(build: &BuildConfig) -> UpdaterConfig {
+    UpdaterConfig::new(build.app_id.clone(), check_source(build))
+}
+
+#[cfg(windows)]
+fn base_config(build: &BuildConfig) -> UpdaterConfig {
+    let (Some(feed), Some(install)) = (&build.feed, build.windows_install) else {
+        return UpdaterConfig::new(build.app_id.clone(), check_source(build));
+    };
+    windows::updater_config(build, feed, install).unwrap_or_else(|error| {
+        UpdaterConfig::new(
+            build.app_id.clone(),
+            Misconfigured(format!("This build cannot update on Windows: {error}").into()),
+        )
+    })
+}
+
+#[cfg(windows)]
+mod windows {
+    use gpui_auto_update::UpdaterConfig;
+    use gpui_auto_update::core::UpdateError;
+    use gpui_auto_update::core::feed::Arch;
+    use gpui_auto_update::core::fetch::FetchPolicy;
+    use gpui_auto_update::windows::{
+        InnoSetup, PortableExecutable, UpdateStrategy, WindowsUpdateConfig,
+    };
+
+    use crate::build_config::{BuildConfig, FeedConfig, WindowsInstall};
+
+    /// The Windows backend for the strategy the build declared. The single
+    /// compiled-in feed is the one for the architecture this binary was
+    /// built for.
+    pub fn updater_config(
+        build: &BuildConfig,
+        feed: &FeedConfig,
+        install: WindowsInstall,
+    ) -> Result<UpdaterConfig, UpdateError> {
+        let strategy = match install {
+            WindowsInstall::InnoSetup => {
+                let mut inno = InnoSetup::new();
+                if let Some(report) = &build.e2e_report {
+                    inno = inno.with_log_file(report.with_file_name("inno-setup.log"));
+                }
+                UpdateStrategy::inno_setup(inno)
+            }
+            WindowsInstall::Portable => UpdateStrategy::portable(PortableExecutable::new()),
+        };
+        let arch = Arch::current().ok_or_else(|| {
+            UpdateError::new(gpui_auto_update::core::ErrorKind::Configuration)
+                .with_message("Updates are not published for this architecture.")
+        })?;
+        let config =
+            WindowsUpdateConfig::new(build.version.clone(), feed.public_key.clone(), strategy)
+                .with_feed(arch, feed.url.clone())
+                .with_fetch_policy(FetchPolicy {
+                    allow_insecure_http: feed.allow_insecure_http,
+                    ..FetchPolicy::default()
+                });
+        UpdaterConfig::windows(build.app_id.clone(), config)
+    }
 }
 
 fn check_source(build: &BuildConfig) -> Box<dyn CheckSource> {

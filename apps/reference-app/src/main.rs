@@ -14,6 +14,7 @@
 mod build_config;
 mod document;
 mod setup;
+mod unattended;
 mod update_ui;
 
 use std::path::PathBuf;
@@ -123,9 +124,18 @@ fn main() {
         .as_ref()
         .map(|build| build.app_id.clone())
         .unwrap_or_else(|_| DEFAULT_APP_ID.to_owned());
+    let e2e_report = build
+        .as_ref()
+        .ok()
+        .and_then(|build| build.e2e_report.clone());
 
     Application::new().run(move |cx: &mut App| {
         let updater = gpui_auto_update::init(setup::updater_config(&build), cx);
+        if let Some(report) = &e2e_report {
+            let unattended = unattended::Unattended::start(&updater, report, &version, cx);
+            // Unattended mode lasts as long as the process.
+            std::mem::forget(unattended);
+        }
 
         cx.on_action(|_: &Quit, cx| cx.quit());
         cx.set_menus(vec![Menu {

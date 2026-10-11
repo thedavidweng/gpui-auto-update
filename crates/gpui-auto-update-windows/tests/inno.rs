@@ -200,6 +200,28 @@ fn installers_are_staged_with_an_exe_name_and_confirm_product_version() {
 }
 
 #[test]
+fn inno_setup_space_padded_version_strings_are_confirmed() {
+    // ISCC reserves room for the version strings by padding them with
+    // spaces, so a real installer's ProductVersion reads "1.5.0" followed by
+    // dozens of spaces.
+    let padded = format!("1.5.0{}", " ".repeat(45));
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("setup.exe");
+    std::fs::write(&path, PeImage::installer(&padded).build()).unwrap();
+    let inno = InnoSetup::new();
+    assert_eq!(
+        inno.confirm_version(&path, &ReleaseVersion::parse("1.5.0").unwrap()),
+        Ok(())
+    );
+    assert_eq!(
+        inno.confirm_version(&path, &ReleaseVersion::parse("1.5.1").unwrap())
+            .unwrap_err()
+            .kind(),
+        ErrorKind::ArchiveValidation
+    );
+}
+
+#[test]
 fn install_targets_come_from_the_running_executable_path() {
     let dir = tempfile::tempdir().unwrap();
     let exe = dir.path().join("demo.exe");

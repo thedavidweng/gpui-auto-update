@@ -2457,6 +2457,7 @@ dependencies = [
 name = "gpui-auto-update-reference-app"
 version = "0.0.0"
 dependencies = [
+ "embed-resource",
  "gpui",
  "gpui-auto-update",
  "gpui-auto-update-ui",
