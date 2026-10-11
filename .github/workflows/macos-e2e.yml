@@ -47,7 +47,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Ensure Metal toolchain
         # GPUI compiles Metal shaders at build time; newer Xcode releases
@@ -63,7 +63,7 @@ jobs:
         run: tools/e2e/macos-reference-update.sh
       - name: Keep the logs of a failed run
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-e2e-logs
           path: |
@@ -103,7 +103,7 @@ jobs:
     needs: [bundle, credentials]
     if: needs.credentials.outputs.present == 'true'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Ensure Metal toolchain
         run: xcrun metal --version || xcodebuild -downloadComponent MetalToolchain
