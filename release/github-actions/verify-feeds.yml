@@ -1,0 +1,99 @@
+name: Verify update feeds
+
+# Reusable workflow that audits every update feed with
+# `gpui-auto-update verify`. It is called by release.yml between artifact
+# upload and feed publication (source: artifact), and can also run on a
+# schedule against the live feeds (source: urls) as a post-release audit.
+#
+# Verification needs only the public key, so this workflow deliberately
+# takes no secrets.
+
+on:
+  workflow_call:
+    inputs:
+      feed-url-prefix:
+        description: "Public base URL the feeds are served from, e.g. https://downloads.example.com/myapp"
+        required: true
+        type: string
+      public-key:
+        description: "Base64 Ed25519 public key the application trusts (SUPublicEDKey). Not a secret."
+        required: true
+        type: string
+      version:
+        description: "Release version every feed must offer as its top release (x.y.z)"
+        required: true
+        type: string
+      source:
+        description: "'artifact' verifies this run's staged `feeds*` workflow artifacts; 'urls' verifies the live feeds"
+        required: false
+        type: string
+        default: urls
+      cli-version:
+        description: "gpui-auto-update-cli version to install (empty: the workflow's pinned default)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify (${{ matrix.feed }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # TODO(app): one entry per feed you publish. Native feeds get an
+          # os/arch pair, which also asserts the feed covers that platform;
+          # the macOS Sparkle appcast leaves both empty.
+          - feed: appcast-windows-x86_64.xml
+            os: windows
+            arch: x86_64
+          - feed: appcast-linux-x86_64.xml
+            os: linux
+            arch: x86_64
+          - feed: appcast.xml
+            os: ""
+            arch: ""
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the staged feeds
+        if: inputs.source == 'artifact'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: feeds*
+          path: site
+          merge-multiple: true
+      - name: Install the gpui-auto-update CLI
+        env:
+          INPUT_CLI_VERSION: ${{ inputs.cli-version }}
+        run: |
+          set -euo pipefail
+          # TODO(app): pin the same version as release.yml.
+          version="${INPUT_CLI_VERSION:-0.4}"
+          cargo install --locked --version "$version" gpui-auto-update-cli
+      - name: Verify the feed and every artifact it references
+        env:
+          SOURCE: ${{ inputs.source }}
+          FEED_FILE: ${{ matrix.feed }}
+          FEED_URL_PREFIX: ${{ inputs.feed-url-prefix }}
+          PUBLIC_KEY: ${{ inputs.public-key }}
+          VERSION: ${{ inputs.version }}
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          args=(--public-key "$PUBLIC_KEY" --expect-version "$VERSION" -v)
+          if [ -n "$OS" ]; then
+            args+=(--os "$OS" --arch "$ARCH")
+          fi
+          if [ "$SOURCE" = "artifact" ]; then
+            # The staged feed file references the artifacts' final URLs,
+            # which must already be uploaded: this re-downloads each one and
+            # checks its length and Ed25519 signature before the feed moves.
+            args+=(--feed "site/$FEED_FILE")
+          else
+            args+=(--feed "$FEED_URL_PREFIX/$FEED_FILE")
+          fi
+          gpui-auto-update verify "${args[@]}"

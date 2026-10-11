@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest a capability or improvement.
+labels: [enhancement, needs-triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what makes it hard today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: The behavior or API you would like.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options: [Runtime / GPUI API, Sparkle (macOS), Windows, Linux, CLI / release tooling, Documentation]
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

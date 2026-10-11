@@ -1,0 +1,411 @@
+name: Release
+
+# Release workflow TEMPLATE for applications using gpui-auto-update.
+# See release/README.md in the gpui-auto-update repository for the adoption
+# guide, and docs/hosting/ for the upload recipes. Search for `TODO(app)` and
+# replace every marker before your first release.
+#
+# The job graph enforces the publish-order contract:
+#
+#   version -> build -> feeds / feeds-macos -> publish-artifacts
+#     -> verify-published -> publish-feeds -> github-release
+#
+# Immutable artifacts are uploaded (and never overwritten) before any mutable
+# feed moves, and every feed is verified with `gpui-auto-update verify`
+# between the two. Private key material enters only through GitHub secrets,
+# and only into the `env` of the signing steps.
+
+on:
+  push:
+    # Tag `v1.5.0` to release version 1.5.0 on the stable channel.
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (x.y.z), without the leading v"
+        required: true
+        type: string
+      channel:
+        description: "Release channel for the Windows/Linux feeds"
+        required: true
+        type: string
+        default: stable
+
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize releases per ref, and never cancel a queued release: two runs
+  # must never race an artifact upload past the no-overwrite guard.
+  group: release-${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # TODO(app): pin the CLI version you release with. Keep in sync with the
+  # pin in verify-feeds.yml.
+  CLI_VERSION: "0.4"
+
+jobs:
+  version:
+    name: Resolve the release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      channel: ${{ steps.resolve.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Resolve one authoritative version
+        id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            version="$INPUT_VERSION"
+            channel="$INPUT_CHANNEL"
+          else
+            version="${TAG_NAME#v}"
+            channel="stable"
+          fi
+          if ! grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$' <<<"$version"; then
+            echo "::error::'$version' is not a semantic version (x.y.z)"
+            exit 1
+          fi
+          if [ "$EVENT" != "workflow_dispatch" ] && [ "$TAG_NAME" != "v$version" ]; then
+            echo "::error::tag '$TAG_NAME' does not resolve to version '$version'"
+            exit 1
+          fi
+          # TODO(app): fail here unless $version also matches the version in
+          # your Cargo.toml / Info.plist, so a mistyped tag cannot ship.
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "channel=$channel" >>"$GITHUB_OUTPUT"
+      - name: Refuse to re-release a published version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::GitHub release v$VERSION already exists; release a new version instead of replacing one"
+            exit 1
+          fi
+
+  build:
+    name: Build and package (${{ matrix.platform }}/${{ matrix.arch }})
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # TODO(app): extend to every os/arch you ship, for example
+          # windows/aarch64 and linux/aarch64. Every entry needs a matching
+          # leg in the `feeds` jobs and in verify-feeds.yml.
+          - os: macos-latest
+            platform: macos
+            arch: aarch64
+          - os: windows-latest
+            platform: windows
+            arch: x86_64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build, package, and sign (TODO)
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          # TODO(app): implement your packaging here. The rest of this
+          # workflow expects versioned artifact names in dist/:
+          #
+          #   macOS:   dist/MyApp-$VERSION-macos-$ARCH.zip
+          #            (the Sparkle update archive; sign and notarize the
+          #            .app first, and embed SUPublicEDKey + SUFeedURL)
+          #   Windows: dist/MyApp-$VERSION-windows-$ARCH-setup.exe
+          #            (code-signed installer; portable zips go through a
+          #            separate feed, since each feed item holds exactly one
+          #            artifact)
+          #   Linux:   dist/MyApp-$VERSION-linux-$ARCH.tar.gz
+          #            (managed-install tarball with the ownership marker)
+          #
+          # The version in the file name is load-bearing: it is what makes
+          # every artifact URL immutable, and `feed native` refuses URLs
+          # that do not contain the version.
+          echo "::error::build/packaging steps are not implemented yet (TODO(app))"
+          exit 1
+      - name: Upload the packaged artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/
+
+  feeds:
+    name: Generate signed feeds (Windows/Linux)
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      CHANNEL: ${{ needs.version.outputs.channel }}
+      DOWNLOADS_BASE_URL: ${{ vars.DOWNLOADS_BASE_URL }}
+    steps:
+      - name: Install the gpui-auto-update CLI
+        run: |
+          set -euo pipefail
+          # Before your pinned version is on crates.io, install a pinned git
+          # revision instead:
+          #   cargo install --locked --git https://github.com/thedavidweng/gpui-auto-update --tag cli-v$CLI_VERSION gpui-auto-update-cli
+          cargo install --locked --version "$CLI_VERSION" gpui-auto-update-cli
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - name: Fetch the currently published feeds
+        env:
+          # TODO(app): one line per Windows/Linux feed you publish.
+          FEEDS: "appcast-windows-x86_64.xml appcast-linux-x86_64.xml"
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          for feed in $FEEDS; do
+            if ! curl -fsSL "$DOWNLOADS_BASE_URL/$feed" -o "site/$feed"; then
+              echo "no existing $feed (first release on this feed)"
+            fi
+          done
+      - name: Check the signing key pair
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          APP_PUBLIC_ED_KEY: ${{ vars.APP_PUBLIC_ED_KEY }}
+        run: |
+          set -euo pipefail
+          # Fail closed before signing anything: the private key must belong
+          # to the public key the released application trusts.
+          gpui-auto-update keys check --public-key "$APP_PUBLIC_ED_KEY" --key-env SPARKLE_PRIVATE_KEY
+      - name: Sign artifacts and update the feeds
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          APP_PUBLIC_ED_KEY: ${{ vars.APP_PUBLIC_ED_KEY }}
+          # TODO(app): one line per Windows/Linux os/arch you publish.
+          COMBOS: "windows x86_64
+                   linux x86_64"
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          channel_args=()
+          if [ "$CHANNEL" != "stable" ]; then
+            channel_args+=(--channel "$CHANNEL")
+          fi
+          while read -r os arch; do
+            [ -n "$os" ] || continue
+            feed="site/appcast-$os-$arch.xml"
+            args=(--os "$os" --arch "$arch" --version "$VERSION"
+              --download-url-prefix "$DOWNLOADS_BASE_URL/releases/$VERSION/"
+              --public-key "$APP_PUBLIC_ED_KEY" --key-env SPARKLE_PRIVATE_KEY
+              --output "$feed" ${channel_args[@]+"${channel_args[@]}"})
+            if [ -f "$feed" ]; then
+              args+=(--feed "$feed")
+            fi
+            # Each feed item holds exactly one artifact, so exactly one
+            # artifact per os/arch may match; ship portable builds through a
+            # separate feed.
+            matches=(dist/*"$os-$arch"*)
+            if [ ${#matches[@]} -ne 1 ]; then
+              echo "::error::expected exactly one artifact matching dist/*$os-$arch*, found ${#matches[@]}"
+              exit 1
+            fi
+            gpui-auto-update feed native "${args[@]}" --artifact "${matches[0]}"
+          done <<<"$COMBOS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: feeds
+          path: site/
+
+  feeds-macos:
+    name: Generate the Sparkle appcast (macOS)
+    needs: [version, build]
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      DOWNLOADS_BASE_URL: ${{ vars.DOWNLOADS_BASE_URL }}
+    steps:
+      - name: Install the gpui-auto-update CLI
+        run: |
+          set -euo pipefail
+          cargo install --locked --version "$CLI_VERSION" gpui-auto-update-cli
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-macos-*
+          path: dist
+          merge-multiple: true
+      - name: Fetch the current appcast
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          if ! curl -fsSL "$DOWNLOADS_BASE_URL/appcast.xml" -o site/appcast.xml; then
+            echo "no existing appcast.xml (first release)"
+          fi
+      - name: Check the signing key pair
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          APP_PUBLIC_ED_KEY: ${{ vars.APP_PUBLIC_ED_KEY }}
+        run: |
+          set -euo pipefail
+          gpui-auto-update keys check --public-key "$APP_PUBLIC_ED_KEY" --key-env SPARKLE_PRIVATE_KEY
+      - name: Fetch the pinned Sparkle distribution
+        run: gpui-auto-update sparkle fetch --out build/sparkle
+      - name: Generate the appcast and deltas
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          APP_PUBLIC_ED_KEY: ${{ vars.APP_PUBLIC_ED_KEY }}
+        run: |
+          set -euo pipefail
+          # Runs Sparkle's generate_appcast with the key on standard input,
+          # creates deltas in dist/, and leaves site/appcast.xml untouched
+          # unless every enclosure verifies.
+          gpui-auto-update feed sparkle \
+            --sparkle build/sparkle --archives dist \
+            --public-key "$APP_PUBLIC_ED_KEY" --key-env SPARKLE_PRIVATE_KEY \
+            --download-url-prefix "$DOWNLOADS_BASE_URL/releases/$VERSION/" \
+            --output site/appcast.xml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: feeds-macos
+          path: site/
+      # The archives directory now also contains the generated deltas; all
+      # of it must be uploaded before the appcast goes live.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-archives
+          path: dist/
+
+  publish-artifacts:
+    name: Upload the immutable versioned artifacts
+    needs: [version, feeds, feeds-macos]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      DOWNLOADS_BASE_URL: ${{ vars.DOWNLOADS_BASE_URL }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      # The archives as generate_appcast left them, including deltas.
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-archives
+          path: dist
+          merge-multiple: true
+      - name: Refuse to overwrite an already published version
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          artifacts=(dist/*)
+          if [ ${#artifacts[@]} -eq 0 ]; then
+            echo "::error::nothing to publish"
+            exit 1
+          fi
+          for artifact in "${artifacts[@]}"; do
+            url="$DOWNLOADS_BASE_URL/releases/$VERSION/$(basename "$artifact")"
+            if curl -fsSI "$url" >/dev/null; then
+              echo "::error::$url is already published; refusing to overwrite a versioned artifact"
+              exit 1
+            fi
+          done
+      - name: Upload artifacts (S3-compatible; see docs/hosting/ for other hosts)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          ARTIFACT_BUCKET: myapp-downloads # TODO(app)
+        run: |
+          set -euo pipefail
+          # Versioned artifacts are immutable: they never change once
+          # published, so they get the longest possible cache lifetime. The
+          # guard above catches an existing version early; the conditional
+          # write (If-None-Match: *) refuses to overwrite any object that
+          # appeared since, failing with 412 instead. If your provider lacks
+          # conditional writes, see docs/hosting/s3-compatible.md.
+          for artifact in dist/*; do
+            aws s3api put-object \
+              --bucket "$ARTIFACT_BUCKET" \
+              --key "releases/$VERSION/$(basename "$artifact")" \
+              --body "$artifact" \
+              --cache-control "public, max-age=31536000, immutable" \
+              --if-none-match '*'
+          done
+
+  verify-published:
+    name: Verify feeds against the published artifacts
+    needs: [version, publish-artifacts]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/verify-feeds.yml
+    with:
+      feed-url-prefix: ${{ vars.DOWNLOADS_BASE_URL }}
+      public-key: ${{ vars.APP_PUBLIC_ED_KEY }}
+      version: ${{ needs.version.outputs.version }}
+      source: artifact
+
+  publish-feeds:
+    name: Publish the mutable feeds (last)
+    needs: [version, publish-artifacts, verify-published]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: feeds*
+          path: site
+          merge-multiple: true
+      - name: Publish feeds (S3-compatible; see docs/hosting/ for other hosts)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          FEED_BUCKET: myapp-downloads # TODO(app)
+        run: |
+          set -euo pipefail
+          # Feeds are the only mutable documents in the release. Overwriting
+          # them is expected — but only now, after the artifacts they
+          # reference are uploaded and verified. Keep the cache lifetime
+          # short so clients see new releases quickly.
+          for feed in site/*.xml; do
+            aws s3 cp "$feed" "s3://$FEED_BUCKET/$(basename "$feed")" \
+              --content-type "application/xml" \
+              --cache-control "public, max-age=60"
+          done
+
+  github-release:
+    name: Publish the human-facing GitHub release
+    needs: [version, publish-feeds]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          TARGET: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Notes and discussion only; the updater reads the feeds, not this
+          # release. If you host artifacts on GitHub Releases instead of
+          # object storage, attach them here and adapt publish-artifacts —
+          # see docs/hosting/github-releases.md.
+          gh release create "v$VERSION" \
+            --target "$TARGET" \
+            --title "v$VERSION" \
+            --generate-notes

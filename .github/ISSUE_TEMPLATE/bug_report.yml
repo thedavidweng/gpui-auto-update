@@ -1,0 +1,45 @@
+name: Bug report
+description: Something in gpui-auto-update does not behave as documented.
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. If this is a security issue, stop here and use
+        the private vulnerability reporting link instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: A minimal sequence of steps or code that triggers the problem.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options: [macOS, Windows, Linux]
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: gpui-auto-update, gpui, Rust, OS version, and Sparkle version (macOS).
+      placeholder: "gpui-auto-update 0.1.0, gpui 0.2.2, rustc 1.90, macOS 15.4, Sparkle 2.x"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant `tracing` output or Sparkle logs. Remove private keys, tokens, and personal paths.
+      render: text

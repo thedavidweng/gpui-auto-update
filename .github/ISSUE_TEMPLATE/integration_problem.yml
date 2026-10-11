@@ -1,0 +1,44 @@
+name: Integration problem
+description: Trouble adding gpui-auto-update to an application, packaging it, signing releases, or hosting feeds.
+labels: [needs-triage]
+body:
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where are you stuck?
+      options:
+        - Adding the crate / GPUI API
+        - macOS Sparkle packaging or code signing
+        - Windows installer or portable packaging
+        - Linux managed install layout
+        - Signing keys
+        - Feed generation or hosting
+        - CI / release workflow
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What did you try, and what happened?
+      description: Include relevant configuration (Info.plist keys, feed snippets, Cargo.toml). Never paste private keys.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`gpui-auto-update doctor` output"
+      description: If available, paste the doctor output.
+      render: text
+  - type: input
+    id: versions
+    attributes:
+      label: Versions and platform
+    validations:
+      required: true
