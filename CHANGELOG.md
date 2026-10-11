@@ -16,10 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compatibility (including `[patch]` guidance for GPUI), and migration, indexed
   in `docs/README.md`. The README's Rust snippets are compiled as doctests of
   the facade crate.
+- End-to-end updates of the reference application on every platform: through
+  Sparkle on macOS (delta and full-archive fallback, with a notarization job
+  gated on credentials), Inno Setup and portable on Windows, and a managed
+  install with rollback of a broken release on Linux.
 - CI builds the documentation with warnings denied on macOS, Windows, and Linux,
   and the facade crate declares its docs.rs targets.
 - Cargo workspace with the core, macOS, Windows, and Linux backend, GPUI
-  facade, neutral UI, CLI, and reference application crates (placeholders).
+  facade, neutral UI, CLI, and reference application crates.
 - CI on macOS, Windows, and Linux with rustfmt, clippy, tests, docs, MSRV, and
   cargo-deny checks.
 - Dual MIT OR Apache-2.0 licensing, contribution guide, security policy, code

@@ -114,7 +114,8 @@ externally visible file and process behavior.
   logic is kept in modules that can run on any host; platform code is gated by
   `cfg`.
 - The [reference application](../apps/reference-app/README.md) performs real
-  old-to-new updates: Linux (including rollback of a broken release) and
+  old-to-new updates: macOS (a signed `.app` through Sparkle, by delta and by
+  full-archive fallback), Linux (including rollback of a broken release), and
   Windows (Inno Setup and portable) run in CI through `tools/e2e/`.
 - GPUI-facing behavior is tested with GPUI's `TestAppContext`.
 - Preview states let UI be tested without any update.
