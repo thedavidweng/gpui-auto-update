@@ -1,0 +1,46 @@
+[package]
+name = "gpui-auto-update"
+description = "Production-grade automatic updates for GPUI apps — Sparkle on macOS, signed native updates on Windows and Linux."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+documentation = "https://docs.rs/gpui-auto-update"
+readme = "README.md"
+keywords = ["gpui", "auto-update", "updater", "sparkle", "desktop"]
+categories = ["gui", "os"]
+
+[features]
+# Starts and links the real Sparkle 2 framework on macOS
+# (`UpdaterConfig::sparkle`). Building with it requires SPARKLE_FRAMEWORK_PATH;
+# see docs/adr/0002-sparkle-binding.md.
+sparkle = ["gpui-auto-update-macos/sparkle"]
+
+[dependencies]
+gpui.workspace = true
+gpui-auto-update-core.workspace = true
+futures = { version = "0.3.34", default-features = false, features = ["std"] }
+tracing = "0.1.44"
+url = "2.5.8"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+gpui-auto-update-macos.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+gpui-auto-update-windows.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gpui-auto-update-linux.workspace = true
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+
+# The Linux backend adapter is also compiled into unit tests on other Unix
+# hosts, so it is type-checked and tested where GPUI cannot be cross-built.
+[target.'cfg(unix)'.dev-dependencies]
+gpui-auto-update-linux.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,50 @@
+[package]
+name = "gpui-auto-update-cli"
+description = "Release and integration tooling for gpui-auto-update: keys, feeds, verification, and doctor checks."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+documentation = "https://docs.rs/gpui-auto-update-cli"
+readme = "README.md"
+keywords = ["auto-update", "sparkle", "appcast", "release", "ed25519"]
+categories = ["command-line-utilities", "development-tools::build-utils"]
+
+[[bin]]
+name = "gpui-auto-update"
+path = "src/main.rs"
+# Shares the `gpui_auto_update` crate name with the facade library.
+doc = false
+
+[dependencies]
+gpui-auto-update-core.workspace = true
+anyhow = "1.0.104"
+base64 = "0.23.1"
+clap = { version = "4.6.7", features = ["derive", "env"] }
+ed25519-dalek = { version = "3.0.0", features = ["hazmat"] }
+flate2 = "1.1.10"
+getrandom = "0.4.3"
+liblzma = { version = "0.4.8", default-features = false, features = ["static"] }
+roxmltree = "0.21.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json.workspace = true
+sha2 = "0.11.0"
+tar = { version = "0.4.46", default-features = false }
+tempfile = "3.27.0"
+toml = "1.1.6"
+url = "2.5.8"
+zeroize = "1.8.2"
+
+[dev-dependencies]
+flate2 = "1.1.10"
+sha2 = "0.11.0"
+liblzma = { version = "0.4.8", default-features = false, features = ["static"] }
+tar = { version = "0.4.46", default-features = false }
+tempfile = "3.27.0"
+tiny_http = "0.12.0"
+
+[lints]
+workspace = true

@@ -1,0 +1,23 @@
+[package]
+name = "gpui-auto-update-ui"
+description = "Optional neutral, theme-inheriting GPUI update controls for gpui-auto-update."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+documentation = "https://docs.rs/gpui-auto-update-ui"
+readme = "README.md"
+keywords = ["gpui", "auto-update", "updater", "ui", "desktop"]
+categories = ["gui"]
+
+[dependencies]
+gpui.workspace = true
+gpui-auto-update.workspace = true
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true

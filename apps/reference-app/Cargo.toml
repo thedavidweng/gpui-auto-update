@@ -1,0 +1,30 @@
+[package]
+name = "gpui-auto-update-reference-app"
+description = "Minimal GPUI application used to validate gpui-auto-update end to end."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "reference-app"
+path = "src/main.rs"
+
+[dependencies]
+gpui-auto-update.workspace = true
+gpui-auto-update-ui.workspace = true
+# The application, not the libraries, selects GPUI's platform features.
+gpui = { workspace = true, features = ["font-kit", "wayland", "x11", "windows-manifest"] }
+thiserror = "2.0.21"
+url = "2.5.8"
+
+[build-dependencies]
+embed-resource = "3.0.11"
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+tempfile = "3.27.0"
+
+[lints]
+workspace = true

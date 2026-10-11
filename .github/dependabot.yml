@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    ignore:
+      # libc 0.2.190 removed the Linux `ENOATTR` alias that xattr 0.2.3 (via
+      # gpui 0.2.2 -> gpui_http_client -> zed-async-tar) still uses. Remove
+      # this once gpui no longer pulls in xattr 0.2.
+      - dependency-name: libc
+        versions: [">= 0.2.190"]
+    groups:
+      cargo-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]

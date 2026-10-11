@@ -1,0 +1,37 @@
+[package]
+name = "gpui-auto-update-core"
+description = "Framework-independent update state, feed, verification, and policy contracts for gpui-auto-update."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+documentation = "https://docs.rs/gpui-auto-update-core"
+readme = "README.md"
+keywords = ["auto-update", "updater", "ed25519", "sparkle", "desktop"]
+categories = ["os", "gui"]
+
+[dependencies]
+base64 = "0.23.1"
+ed25519-dalek = { version = "3.0.0", features = ["hazmat"] }
+roxmltree = "0.21.1"
+semver = "1.0.28"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json.workspace = true
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+# TLS trusts the operating system's certificate store (platform verifier)
+# with the ring crypto provider. ureq's "rustls" feature would instead bundle
+# webpki-roots, whose CDLA-Permissive-2.0 license deny.toml does not allow.
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12"] }
+ureq = { version = "3.4.2", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
+tracing = "0.1.44"
+url = "2.5.8"
+
+[dev-dependencies]
+tiny_http = "0.12.0"
+
+[lints]
+workspace = true

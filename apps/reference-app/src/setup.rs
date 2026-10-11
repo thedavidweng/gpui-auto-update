@@ -1,0 +1,256 @@
+//! Turns the build-time configuration into an [`UpdaterConfig`].
+
+use std::borrow::Cow;
+
+use gpui_auto_update::core::check::{FeedCheckSource, UpdateChecker};
+use gpui_auto_update::core::feed::{Arch, Os, UpdateTarget};
+use gpui_auto_update::core::fetch::{FetchPolicy, HttpClient};
+use gpui_auto_update::core::{
+    Capability, CheckOutcome, CheckPolicy, CheckRequest, CheckSource, ErrorKind, UpdateError,
+};
+use gpui_auto_update::{NativeFeed, UpdaterConfig};
+
+use crate::build_config::{BuildConfig, BuildConfigError, DEFAULT_APP_ID};
+
+/// The updater configuration for `build`.
+///
+/// A build without a usable feed still gets an updater, whose checks fail
+/// with a configuration error, so the error state is reachable without a
+/// server. On Windows, a build that declares `REFERENCE_APP_WINDOWS_INSTALL`
+/// installs with the Windows backend and that strategy. Every other build
+/// with a feed installs with the platform's default native-feed backend
+/// ([`UpdaterConfig::native_feed`]): on Linux the managed-install backend, and
+/// elsewhere one that cannot update, so Windows builds without a declared
+/// strategy do not update themselves.
+pub fn updater_config(build: &Result<BuildConfig, BuildConfigError>) -> UpdaterConfig {
+    let build = match build {
+        Ok(build) => build,
+        Err(error) => {
+            return UpdaterConfig::new(
+                DEFAULT_APP_ID,
+                Misconfigured(format!("This build is misconfigured: {error}.").into()),
+            );
+        }
+    };
+
+    let mut config = base_config(build).allow_debug_self_update(build.allow_debug_self_update);
+    if let Some(manager) = &build.externally_managed {
+        config = config.with_capability(Capability::ExternallyManaged {
+            manager: Some(manager.clone()),
+        });
+    }
+    if let Some(interval) = build.check_interval {
+        config = config.with_policy(
+            CheckPolicy::recommended()
+                .with_minimum_interval(interval)
+                .with_periodic_interval(Some(interval)),
+        );
+    }
+    config
+}
+
+#[cfg(not(windows))]
+fn windows_config(_: &BuildConfig) -> Option<UpdaterConfig> {
+    None
+}
+
+/// The Windows backend, for a build with a feed and a declared strategy.
+#[cfg(windows)]
+fn windows_config(build: &BuildConfig) -> Option<UpdaterConfig> {
+    let (Some(feed), Some(install)) = (&build.feed, build.windows_install) else {
+        return None;
+    };
+    Some(
+        windows::updater_config(build, feed, install).unwrap_or_else(|error| {
+            UpdaterConfig::new(
+                build.app_id.clone(),
+                Misconfigured(format!("This build cannot update on Windows: {error}").into()),
+            )
+        }),
+    )
+}
+
+fn base_config(build: &BuildConfig) -> UpdaterConfig {
+    if let Some(config) = windows_config(build) {
+        return config;
+    }
+    match native_feed(build) {
+        Some(feed) => UpdaterConfig::native_feed(build.app_id.clone(), feed),
+        None => UpdaterConfig::new(build.app_id.clone(), check_source(build)),
+    }
+}
+
+#[cfg(windows)]
+mod windows {
+    use gpui_auto_update::UpdaterConfig;
+    use gpui_auto_update::core::UpdateError;
+    use gpui_auto_update::core::feed::Arch;
+    use gpui_auto_update::core::fetch::FetchPolicy;
+    use gpui_auto_update::windows::{
+        InnoSetup, PortableExecutable, UpdateStrategy, WindowsUpdateConfig,
+    };
+
+    use crate::build_config::{BuildConfig, FeedConfig, WindowsInstall};
+
+    /// The Windows backend for the strategy the build declared. The single
+    /// compiled-in feed is the one for the architecture this binary was
+    /// built for.
+    pub fn updater_config(
+        build: &BuildConfig,
+        feed: &FeedConfig,
+        install: WindowsInstall,
+    ) -> Result<UpdaterConfig, UpdateError> {
+        let strategy = match install {
+            WindowsInstall::InnoSetup => {
+                let mut inno = InnoSetup::new();
+                if let Some(report) = &build.e2e_report {
+                    inno = inno.with_log_file(report.with_file_name("inno-setup.log"));
+                }
+                UpdateStrategy::inno_setup(inno)
+            }
+            WindowsInstall::Portable => UpdateStrategy::portable(PortableExecutable::new()),
+        };
+        let arch = Arch::current().ok_or_else(|| {
+            UpdateError::new(gpui_auto_update::core::ErrorKind::Configuration)
+                .with_message("Updates are not published for this architecture.")
+        })?;
+        let config =
+            WindowsUpdateConfig::new(build.version.clone(), feed.public_key.clone(), strategy)
+                .with_feed(arch, feed.url.clone())
+                .with_fetch_policy(FetchPolicy {
+                    allow_insecure_http: feed.allow_insecure_http,
+                    ..FetchPolicy::default()
+                });
+        UpdaterConfig::windows(build.app_id.clone(), config)
+    }
+}
+
+/// The native feed of a build that has one, on a platform with native feeds.
+fn native_feed(build: &BuildConfig) -> Option<NativeFeed> {
+    let feed = build.feed.as_ref()?;
+    Os::current()?;
+    Arch::current()?;
+    let policy = FetchPolicy {
+        allow_insecure_http: feed.allow_insecure_http,
+        ..FetchPolicy::default()
+    };
+    NativeFeed::new(
+        feed.url.as_str(),
+        feed.public_key.clone(),
+        build.version.clone(),
+    )
+    .ok()
+    .map(|native| native.with_fetch_policy(policy))
+}
+
+fn check_source(build: &BuildConfig) -> Box<dyn CheckSource> {
+    let Some(feed) = &build.feed else {
+        return Box::new(Misconfigured(
+            "This build has no update feed. Set REFERENCE_APP_FEED_URL and REFERENCE_APP_PUBLIC_KEY when building it."
+                .into(),
+        ));
+    };
+    let (Some(os), Some(arch)) = (Os::current(), Arch::current()) else {
+        return Box::new(Misconfigured(
+            "Updates are not published for this platform.".into(),
+        ));
+    };
+    let client = HttpClient::new(FetchPolicy {
+        allow_insecure_http: feed.allow_insecure_http,
+        ..FetchPolicy::default()
+    });
+    let checker = UpdateChecker::new(feed.url.clone(), UpdateTarget::new(os, arch), client);
+    Box::new(FeedCheckSource::new(checker, build.version.clone()))
+}
+
+/// A check source that always fails with a configuration error.
+struct Misconfigured(Cow<'static, str>);
+
+impl CheckSource for Misconfigured {
+    fn check(&self, _: &CheckRequest) -> Result<CheckOutcome, UpdateError> {
+        Err(UpdateError::new(ErrorKind::Configuration).with_message(self.0.clone()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{AppContext as _, TestAppContext};
+    use gpui_auto_update::Updater;
+    use gpui_auto_update::core::{MemoryPreferenceStore, UpdateState};
+
+    use super::*;
+    use crate::build_config::BuildInputs;
+
+    fn updater(
+        cx: &mut TestAppContext,
+        build: Result<BuildConfig, BuildConfigError>,
+    ) -> gpui::Entity<Updater> {
+        updater_with(cx, updater_config(&build))
+    }
+
+    /// As if a platform backend reported a self-managed installation, so
+    /// checks reach the check source.
+    fn self_managed_updater(
+        cx: &mut TestAppContext,
+        build: Result<BuildConfig, BuildConfigError>,
+    ) -> gpui::Entity<Updater> {
+        updater_with(
+            cx,
+            updater_config(&build).with_capability(Capability::SelfManaged),
+        )
+    }
+
+    fn updater_with(cx: &mut TestAppContext, config: UpdaterConfig) -> gpui::Entity<Updater> {
+        let config = config.with_preferences(MemoryPreferenceStore::new());
+        let updater = cx.new(|cx| Updater::new(config, cx));
+        cx.run_until_parked();
+        updater
+    }
+
+    fn check(cx: &mut TestAppContext, updater: &gpui::Entity<Updater>) -> UpdateState {
+        updater.update(cx, |u, cx| u.check_for_updates(cx));
+        cx.run_until_parked();
+        updater.read_with(cx, |u, _| u.state())
+    }
+
+    #[gpui::test]
+    fn a_build_without_a_feed_fails_checks_with_a_configuration_error(cx: &mut TestAppContext) {
+        let updater = self_managed_updater(cx, BuildConfig::from_inputs(&BuildInputs::default()));
+        match check(cx, &updater) {
+            UpdateState::Failed(error) => {
+                assert_eq!(error.kind(), ErrorKind::Configuration);
+                assert!(error.message().contains("REFERENCE_APP_FEED_URL"));
+            }
+            state => panic!("unexpected {state:?}"),
+        }
+    }
+
+    #[gpui::test]
+    fn a_misconfigured_build_reports_why_when_checking(cx: &mut TestAppContext) {
+        let updater = self_managed_updater(cx, Err(BuildConfigError::MissingPublicKey));
+        match check(cx, &updater) {
+            UpdateState::Failed(error) => {
+                assert_eq!(error.kind(), ErrorKind::Configuration);
+                assert!(error.message().contains("REFERENCE_APP_PUBLIC_KEY"));
+            }
+            state => panic!("unexpected {state:?}"),
+        }
+    }
+
+    #[gpui::test]
+    fn an_externally_managed_build_never_updates_itself(cx: &mut TestAppContext) {
+        let build = BuildConfig::from_inputs(&BuildInputs {
+            externally_managed: Some("Homebrew"),
+            ..BuildInputs::default()
+        });
+        let updater = updater(cx, build);
+        let expected = UpdateState::Disabled {
+            capability: Capability::ExternallyManaged {
+                manager: Some("Homebrew".into()),
+            },
+        };
+        assert_eq!(updater.read_with(cx, |u, _| u.state()), expected);
+        assert_eq!(check(cx, &updater), expected);
+        assert!(!updater.read_with(cx, |u, _| u.is_self_update_supported()));
+    }
+}
