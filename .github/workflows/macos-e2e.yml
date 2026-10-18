@@ -17,15 +17,20 @@ name: macOS end-to-end
 #   MACOS_CERTIFICATE_P12         base64 of the "Developer ID Application" .p12
 #   MACOS_CERTIFICATE_PASSWORD    the .p12 password
 #   MACOS_SIGNING_IDENTITY        e.g. "Developer ID Application: Name (TEAMID)"
-#   NOTARY_APPLE_ID               Apple ID used for notarization
-#   NOTARY_TEAM_ID                the Apple developer team ID
-#   NOTARY_PASSWORD               an app-specific password for that Apple ID
+#   NOTARY_KEY_P8_BASE64          base64 of the App Store Connect team API .p8
+#   NOTARY_KEY_ID                 App Store Connect key ID
+#   NOTARY_ISSUER_ID              App Store Connect team issuer ID
 
 on:
   push:
     branches: [main, "spec-*", "ticket/**"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      require_notarization:
+        description: Require complete Developer ID and API-key credentials
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -46,6 +51,7 @@ jobs:
     name: Update through Sparkle and validate the bundle signing
     runs-on: macos-latest
     timeout-minutes: 60
+    needs: credentials
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -74,27 +80,24 @@ jobs:
           if-no-files-found: ignore
 
   credentials:
-    name: Look for the signing credentials
+    name: Validate signing inputs
     runs-on: ubuntu-latest
     outputs:
       present: ${{ steps.check.outputs.present }}
     env:
-      # `secrets` cannot be used in a job-level `if`, so this job exposes
-      # whether they exist as an output that `notarize` can test.
-      MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+      SIGNING_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
       MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
-      NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
-      NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
-      NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+      NOTARY_KEY_P8_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+      NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+      NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+      REQUIRE_NOTARIZATION: ${{ inputs.require_notarization == true && 'true' || 'false' }}
     steps:
+      - uses: actions/checkout@v7
+      - name: Test signing input and API-key gates
+        run: python3 .github/scripts/test-notarization.py
       - id: check
-        run: |
-          if [[ -n "$MACOS_CERTIFICATE_P12" && -n "$MACOS_SIGNING_IDENTITY" && -n "$NOTARY_APPLE_ID" && -n "$NOTARY_TEAM_ID" && -n "$NOTARY_PASSWORD" ]]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No Developer ID or notary secrets; notarization is skipped."
-          fi
+        run: bash .github/scripts/check-signing-inputs.sh
 
   notarize:
     name: Developer ID signing and notarization
@@ -115,7 +118,9 @@ jobs:
           MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: |
+          umask 077
           keychain="$RUNNER_TEMP/signing.keychain-db"
+          echo "KEYCHAIN=$keychain" >> "$GITHUB_ENV"
           password="$(uuidgen)"
           echo "::add-mask::$password"
           security create-keychain -p "$password" "$keychain"
@@ -127,7 +132,6 @@ jobs:
           rm "$RUNNER_TEMP/certificate.p12"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain"
           security list-keychains -d user -s "$keychain" login.keychain-db
-          echo "KEYCHAIN=$keychain" >> "$GITHUB_ENV"
       - name: Package and sign with the Developer ID identity
         env:
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
@@ -148,18 +152,24 @@ jobs:
             --identity "$MACOS_SIGNING_IDENTITY" --keychain "$KEYCHAIN"
           ditto -c -k --sequesterRsrc --keepParent "$work/Reference App.app" "$work/ReferenceApp.zip"
           echo "WORK=$work" >> "$GITHUB_ENV"
-      - name: Notarize and staple
+      - name: Notarize and staple using the team API key
         env:
-          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
-          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
-          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
-        run: |
-          xcrun notarytool submit "$WORK/ReferenceApp.zip" \
-            --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" \
-            --password "$NOTARY_PASSWORD" --wait
-          xcrun stapler staple "$WORK/Reference App.app"
-          xcrun stapler validate "$WORK/Reference App.app"
-          spctl --assess --type execute --verbose "$WORK/Reference App.app"
-      - name: Remove the temporary keychain
+          NOTARY_KEY_P8_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: bash .github/scripts/notarize-api-key.sh
+      - name: Preserve the verified stapled reference application
+        uses: actions/upload-artifact@v7
+        with:
+          name: developer-id-notarized-reference-app
+          path: |
+            ${{ env.WORK }}/ReferenceApp.zip
+            ${{ env.WORK }}/notarization.json
+          if-no-files-found: error
+      - name: Remove temporary signing material
         if: always()
-        run: security delete-keychain "$KEYCHAIN" || true
+        run: |
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          if [[ -n "${KEYCHAIN:-}" && -f "$KEYCHAIN" ]]; then
+            security delete-keychain "$KEYCHAIN"
+          fi
