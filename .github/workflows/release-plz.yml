@@ -11,6 +11,12 @@ on:
 permissions:
   contents: read
 
+# Distinct from package-* in the reusable workflow; queued releases are not dropped.
+concurrency:
+  group: release-plz-caller-${{ github.ref }}
+  cancel-in-progress: false
+  queue: max
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -24,24 +30,25 @@ jobs:
     needs: fresh-consumer
     if: github.repository_owner == 'thedavidweng'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: write
       pull-requests: read
-    # No concurrency group: a pending release must never be cancelled by a
-    # newer push.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "stable"
       - name: Install GPUI system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             pkg-config libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
             libx11-xcb-dev libxcb1-dev libvulkan-dev libfontconfig1-dev libfreetype-dev
-      - uses: release-plz/action@v0.5
+      - uses: release-plz/action@8921286633dfa0c4020f7f30bd1c14fe19cbb10e # v0.5.142
         with:
           command: release
         env:
@@ -52,6 +59,7 @@ jobs:
     name: Open or update the release pull request
     if: github.repository_owner == 'thedavidweng'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: write
       pull-requests: write
@@ -59,11 +67,13 @@ jobs:
       group: release-plz-pr-${{ github.ref }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "stable"
       # The semver check builds rustdoc JSON for the GPUI crates.
       - name: Install GPUI system dependencies
         run: |
@@ -71,7 +81,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             pkg-config libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
             libx11-xcb-dev libxcb1-dev libvulkan-dev libfontconfig1-dev libfreetype-dev
-      - uses: release-plz/action@v0.5
+      - uses: release-plz/action@8921286633dfa0c4020f7f30bd1c14fe19cbb10e # v0.5.142
         with:
           command: release-pr
         env:
