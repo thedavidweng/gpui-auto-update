@@ -2,6 +2,8 @@ version: 2
 updates:
   - package-ecosystem: cargo
     directory: "/"
+    cooldown:
+      default-days: 7
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
@@ -16,12 +18,14 @@ updates:
         update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: "/"
+    cooldown:
+      default-days: 7
     schedule:
       interval: weekly
     groups:
       github-actions:
         patterns: ["*"]
     ignore:
-      # The ref of dtolnay/rust-toolchain names a Rust toolchain (the MSRV
-      # job pins 1.85), not a version of the action.
+      # dtolnay/rust-toolchain has no release-version tags. Review its
+      # action pin manually; explicit inputs preserve stable and MSRV 1.85.
       - dependency-name: dtolnay/rust-toolchain
