@@ -88,3 +88,8 @@ These exist for the project itself and are not templates:
 
 The end-to-end harnesses can also be run locally; see the
 [reference application README](../apps/reference-app/README.md).
+
+For this repository's initial registry publication and required Developer ID
+validation, follow [First public release](first-public-release.md). The manual
+macOS workflow requires complete certificate and team API-key inputs by default;
+partial inputs fail instead of quietly skipping signing.
