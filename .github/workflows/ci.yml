@@ -63,7 +63,7 @@ jobs:
         # GPUI compiles Metal shaders at build time; newer Xcode releases ship
         # the Metal toolchain as a separate download.
         run: xcrun metal --version || xcodebuild -downloadComponent MetalToolchain
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo fetch --locked
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
@@ -86,7 +86,7 @@ jobs:
         with:
           toolchain: "stable"
           components: clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Fetch the pinned Sparkle distribution
         run: cargo run --locked -q -p gpui-auto-update-cli -- sparkle fetch --out "$RUNNER_TEMP/sparkle"
       - name: Clippy and tests with Sparkle linked
@@ -119,7 +119,7 @@ jobs:
             pkg-config libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
             libx11-xcb-dev libxcb1-dev libvulkan-dev libfontconfig1-dev libfreetype-dev \
             xvfb xauth mesa-vulkan-drivers libvulkan1 fonts-dejavu-core
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo fetch --locked
       - name: Update 1.0.0 -> 1.1.0, then roll back a broken 1.2.0
         run: xvfb-run -a --server-args="-screen 0 1280x1024x24" tools/e2e/linux-update.sh
@@ -135,7 +135,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: "1.85"
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: >-
           cargo check --locked
           -p gpui-auto-update-core
