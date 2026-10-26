@@ -85,7 +85,7 @@ These exist for the project itself and are not templates:
 | Workflow | Purpose |
 | --- | --- |
 | [`ci.yml`](../.github/workflows/ci.yml) | rustfmt; clippy, tests (including doctests), and `cargo doc` with warnings denied on macOS, Windows, and Linux; the Sparkle backend against the real framework; the Linux update and rollback end-to-end; MSRV; `cargo-deny`. |
-| [`macos-e2e.yml`](../.github/workflows/macos-e2e.yml) | Reference-app update from 1.0.0 to 1.0.1 through Sparkle, as an ad hoc signed `.app` with Sparkle embedded, by delta and by full-archive fallback. A notarization job runs only when the Developer ID and notary secrets exist. |
+| [`macos-e2e.yml`](../.github/workflows/macos-e2e.yml) | Reference-app update from 1.0.0 to 1.0.1 through Sparkle, as an ad hoc signed `.app` with Sparkle embedded, by delta and by full-archive fallback. A notarization job runs only when the complete Developer ID and App Store Connect API-key credential set exists; see [first-public-release.md](first-public-release.md). |
 | [`windows-e2e.yml`](../.github/workflows/windows-e2e.yml) | Reference-app update from 1.0.0 to 1.1.0 on Windows x86_64 and ARM64, for the Inno Setup and portable flows. |
 | [`package.yml`](../.github/workflows/package.yml) | Builds the packaged `.crate` files from a fresh project outside the workspace. |
 | [`release-plz.yml`](../.github/workflows/release-plz.yml) | Publishes this project's crates to crates.io with release-plz. |
