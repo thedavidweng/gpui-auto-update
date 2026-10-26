@@ -15,7 +15,7 @@ fn version_flag_prints_the_package_version() {
     assert!(out.status.success());
     assert_eq!(
         String::from_utf8_lossy(&out.stdout).trim(),
-        "gpui-auto-update 0.0.0"
+        concat!("gpui-auto-update ", env!("CARGO_PKG_VERSION"))
     );
 }
 

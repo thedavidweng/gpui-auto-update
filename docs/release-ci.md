@@ -75,6 +75,11 @@ Setup details and the Keychain alternative are in
 
 ## This repository's own workflows
 
+The first crate release is 0.1.0. The workspace package version and internal
+dependency requirements use that version together. Publishing requires the
+`CARGO_REGISTRY_TOKEN` repository secret and successful fresh-consumer checks.
+The generated release pull request must reflect 0.1.0 before it is merged.
+
 These exist for the project itself and are not templates:
 
 | Workflow | Purpose |
