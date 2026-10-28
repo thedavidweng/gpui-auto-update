@@ -53,7 +53,7 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
       channel: ${{ steps.resolve.outputs.channel }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Resolve one authoritative version
         id: resolve
         env:
@@ -114,7 +114,7 @@ jobs:
             arch: x86_64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Build, package, and sign (TODO)
         shell: bash
@@ -143,7 +143,7 @@ jobs:
           echo "::error::build/packaging steps are not implemented yet (TODO(app))"
           exit 1
       - name: Upload the packaged artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.platform }}-${{ matrix.arch }}
           path: dist/
@@ -164,7 +164,7 @@ jobs:
           # revision instead:
           #   cargo install --locked --git https://github.com/thedavidweng/gpui-auto-update --tag cli-v$CLI_VERSION gpui-auto-update-cli
           cargo install --locked --version "$CLI_VERSION" gpui-auto-update-cli
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: dist-*
           path: dist
@@ -224,7 +224,7 @@ jobs:
             fi
             gpui-auto-update feed native "${args[@]}" --artifact "${matches[0]}"
           done <<<"$COMBOS"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: feeds
           path: site/
@@ -241,7 +241,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo install --locked --version "$CLI_VERSION" gpui-auto-update-cli
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: dist-macos-*
           path: dist
@@ -276,13 +276,13 @@ jobs:
             --public-key "$APP_PUBLIC_ED_KEY" --key-env SPARKLE_PRIVATE_KEY \
             --download-url-prefix "$DOWNLOADS_BASE_URL/releases/$VERSION/" \
             --output site/appcast.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: feeds-macos
           path: site/
       # The archives directory now also contains the generated deltas; all
       # of it must be uploaded before the appcast goes live.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos-archives
           path: dist/
@@ -295,13 +295,13 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
       DOWNLOADS_BASE_URL: ${{ vars.DOWNLOADS_BASE_URL }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: dist-*
           path: dist
           merge-multiple: true
       # The archives as generate_appcast left them, including deltas.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: macos-archives
           path: dist
@@ -364,7 +364,7 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: feeds*
           path: site

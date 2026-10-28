@@ -72,15 +72,15 @@ publish-feeds:
   environment:
     name: github-pages
   steps:
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v8
       with:
         pattern: feeds*
         path: site
         merge-multiple: true
-    - uses: actions/upload-pages-artifact@v3
+    - uses: actions/upload-pages-artifact@v5
       with:
         path: site
-    - uses: actions/deploy-pages@v4
+    - uses: actions/deploy-pages@v5
 ```
 
 A Pages deployment replaces the whole site, so `site/` must contain every
